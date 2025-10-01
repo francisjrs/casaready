@@ -60,6 +60,12 @@ export const metadata: Metadata = {
     'real estate',
     'property maintenance'
   ],
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 5,
+    userScalable: true
+  },
   authors: [{ name: 'CasaReady Team' }],
   creator: 'CasaReady',
   metadataBase: new URL('https://casaready.com'),

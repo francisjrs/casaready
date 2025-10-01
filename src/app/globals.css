@@ -52,10 +52,21 @@
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    overflow-x: hidden;
+    max-width: 100%;
+    position: relative;
   }
 
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+    max-width: 100%;
+    position: relative;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Custom scrollbar styles */
@@ -133,6 +144,32 @@
   /* Image optimization */
   img {
     @apply max-w-full h-auto;
+  }
+
+  /* Mobile overflow prevention */
+  @media (max-width: 768px) {
+    html, body {
+      overflow-x: hidden !important;
+      width: 100%;
+      position: relative;
+    }
+
+    * {
+      max-width: 100%;
+    }
+
+    /* Prevent children from overflowing */
+    .container, [class*="container"], [class*="mx-auto"] {
+      max-width: 100% !important;
+    }
+  }
+
+  /* iOS specific fixes */
+  @supports (-webkit-touch-callout: none) {
+    body {
+      /* Prevent rubber band scrolling on iOS */
+      overscroll-behavior-x: none;
+    }
   }
 }
 
