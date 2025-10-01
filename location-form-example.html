@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Location Form - Real Estate Lead Capture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        primaryHover: '#2563EB',
+                        success: '#10B981',
+                        error: '#EF4444',
+                        warning: '#F59E0B'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-md mx-auto pt-8 px-4">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <!-- Header -->
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Find Your Dream Home</h2>
+                <p class="text-gray-600">Enter your location to get started</p>
+            </div>
+
+            <!-- Location Form -->
+            <form id="locationForm" class="space-y-6" novalidate>
+                <!-- ZIP Code Field -->
+                <div class="space-y-2">
+                    <label for="zipCode" class="block text-sm font-semibold text-gray-700">
+                        ZIP Code
+                        <span class="text-red-500" aria-label="required">*</span>
+                    </label>
+                    <div class="relative">
+                        <input
+                            type="text"
+                            id="zipCode"
+                            name="zipCode"
+                            inputmode="numeric"
+                            pattern="[0-9]{5}"
+                            maxlength="5"
+                            placeholder="Enter ZIP Code"
+                            autocomplete="postal-code"
+                            class="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200 bg-white"
+                            aria-describedby="zipCode-error zipCode-help"
+                            required
+                        />
+                        <!-- Success Icon -->
+                        <div id="zipCode-success" class="absolute right-3 top-1/2 transform -translate-y-1/2 hidden">
+                            <svg class="w-6 h-6 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
+                        <!-- Loading Spinner -->
+                        <div id="zipCode-loading" class="absolute right-3 top-1/2 transform -translate-y-1/2 hidden">
+                            <svg class="animate-spin w-5 h-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <!-- Help Text -->
+                    <div id="zipCode-help" class="text-sm text-gray-500">
+                        We'll auto-fill your city when you enter a valid ZIP code
+                    </div>
+                    <!-- Error Message -->
+                    <div id="zipCode-error" class="text-sm text-error hidden" role="alert" aria-live="polite">
+                    </div>
+                </div>
+
+                <!-- City Field -->
+                <div class="space-y-2">
+                    <label for="city" class="block text-sm font-semibold text-gray-700">
+                        City
+                        <span class="text-red-500" aria-label="required">*</span>
+                    </label>
+                    <div class="relative">
+                        <input
+                            type="text"
+                            id="city"
+                            name="city"
+                            placeholder="Enter City"
+                            autocomplete="address-level2"
+                            class="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200 bg-white"
+                            aria-describedby="city-error city-help"
+                            required
+                        />
+                        <!-- Auto-filled indicator -->
+                        <div id="city-autofilled" class="absolute right-3 top-1/2 transform -translate-y-1/2 hidden">
+                            <span class="text-xs bg-success text-white px-2 py-1 rounded-full">Auto-filled</span>
+                        </div>
+                    </div>
+                    <!-- Help Text -->
+                    <div id="city-help" class="text-sm text-gray-500">
+                        Start typing for city suggestions, or we'll fill this automatically
+                    </div>
+                    <!-- Error Message -->
+                    <div id="city-error" class="text-sm text-error hidden" role="alert" aria-live="polite">
+                    </div>
+                    <!-- City Suggestions -->
+                    <div id="city-suggestions" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    </div>
+                </div>
+
+                <!-- Geolocation Button -->
+                <div class="text-center">
+                    <button
+                        type="button"
+                        id="useLocationBtn"
+                        class="inline-flex items-center px-4 py-2 text-sm font-medium text-primary bg-blue-50 border border-primary rounded-lg hover:bg-blue-100 focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors duration-200"
+                    >
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        Use My Current Location
+                    </button>
+                </div>
+
+                <!-- Submit Button -->
+                <button
+                    type="submit"
+                    id="submitBtn"
+                    class="w-full bg-primary text-white font-semibold py-3 px-6 rounded-lg hover:bg-primaryHover focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                    disabled
+                >
+                    Continue to Home Search
+                </button>
+            </form>
+        </div>
+
+        <!-- Demo Info -->
+        <div class="mt-6 p-4 bg-blue-50 rounded-lg">
+            <h3 class="font-semibold text-blue-900 mb-2">Demo Features:</h3>
+            <ul class="text-sm text-blue-800 space-y-1">
+                <li>• Try ZIP codes: 78759 (Austin), 90210 (Beverly Hills), 10001 (NYC)</li>
+                <li>• Type cities for autocomplete suggestions</li>
+                <li>• Use geolocation for automatic detection</li>
+                <li>• Mobile-optimized with numeric keypad</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        class SmartLocationForm {
+            constructor() {
+                this.zipCodeInput = document.getElementById('zipCode');
+                this.cityInput = document.getElementById('city');
+                this.form = document.getElementById('locationForm');
+                this.submitBtn = document.getElementById('submitBtn');
+                this.useLocationBtn = document.getElementById('useLocationBtn');
+
+                this.debounceTimeout = null;
+                this.isAutoFilled = false;
+
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.setupAccessibility();
+            }
+
+            setupEventListeners() {
+                // ZIP Code validation and city lookup
+                this.zipCodeInput.addEventListener('input', (e) => {
+                    this.handleZipCodeInput(e.target.value);
+                });
+
+                // City autocomplete
+                this.cityInput.addEventListener('input', (e) => {
+                    this.handleCityInput(e.target.value);
+                });
+
+                // Clear auto-filled indicator when user modifies city
+                this.cityInput.addEventListener('input', () => {
+                    this.clearAutoFilledIndicator();
+                });
+
+                // Geolocation
+                this.useLocationBtn.addEventListener('click', () => {
+                    this.requestGeolocation();
+                });
+
+                // Form submission
+                this.form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleSubmit();
+                });
+
+                // Clear suggestions when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('#city')) {
+                        this.hideCitySuggestions();
+                    }
+                });
+            }
+
+            setupAccessibility() {
+                // Add ARIA live regions for dynamic content
+                this.addAriaLiveRegion();
+            }
+
+            handleZipCodeInput(value) {
+                clearTimeout(this.debounceTimeout);
+
+                // Remove non-numeric characters
+                const cleanValue = value.replace(/\D/g, '');
+                if (cleanValue !== value) {
+                    this.zipCodeInput.value = cleanValue;
+                    value = cleanValue;
+                }
+
+                // Real-time validation
+                this.validateZipCode(value);
+
+                // Debounced city lookup
+                if (value.length === 5) {
+                    this.debounceTimeout = setTimeout(() => {
+                        this.lookupCityFromZip(value);
+                    }, 300);
+                } else {
+                    this.clearCityAutoFill();
+                }
+
+                this.updateSubmitButton();
+            }
+
+            validateZipCode(value) {
+                const zipError = document.getElementById('zipCode-error');
+                const zipInput = this.zipCodeInput;
+
+                if (value.length === 0) {
+                    this.clearFieldState('zipCode');
+                    return;
+                }
+
+                if (value.length < 5) {
+                    this.setFieldError('zipCode', 'ZIP code must be 5 digits');
+                    return;
+                }
+
+                if (!/^\d{5}$/.test(value)) {
+                    this.setFieldError('zipCode', 'Invalid ZIP code format');
+                    return;
+                }
+
+                this.clearFieldError('zipCode');
+            }
+
+            async lookupCityFromZip(zipCode) {
+                this.showLoading('zipCode');
+
+                try {
+                    // Simulate API call - in real implementation, use ZIP code API
+                    const cityData = await this.mockZipCodeAPI(zipCode);
+
+                    if (cityData.city) {
+                        this.autoFillCity(cityData.city, cityData.state);
+                        this.setFieldSuccess('zipCode');
+                    } else {
+                        this.setFieldError('zipCode', 'ZIP code not found');
+                    }
+                } catch (error) {
+                    this.setFieldError('zipCode', 'Unable to verify ZIP code');
+                } finally {
+                    this.hideLoading('zipCode');
+                }
+            }
+
+            // Mock ZIP code API - replace with real service
+            async mockZipCodeAPI(zipCode) {
+                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+
+                const zipDatabase = {
+                    '78759': { city: 'Austin', state: 'TX' },
+                    '90210': { city: 'Beverly Hills', state: 'CA' },
+                    '10001': { city: 'New York', state: 'NY' },
+                    '94102': { city: 'San Francisco', state: 'CA' },
+                    '60601': { city: 'Chicago', state: 'IL' },
+                    '33101': { city: 'Miami', state: 'FL' },
+                    '98101': { city: 'Seattle', state: 'WA' }
+                };
+
+                return zipDatabase[zipCode] || { city: null, state: null };
+            }
+
+            autoFillCity(city, state) {
+                this.cityInput.value = city;
+                this.isAutoFilled = true;
+                this.showAutoFilledIndicator();
+                this.clearFieldError('city');
+                this.updateSubmitButton();
+            }
+
+            handleCityInput(value) {
+                clearTimeout(this.debounceTimeout);
+
+                if (value.length < 2) {
+                    this.hideCitySuggestions();
+                    this.updateSubmitButton();
+                    return;
+                }
+
+                // Debounced city suggestions
+                this.debounceTimeout = setTimeout(() => {
+                    this.fetchCitySuggestions(value);
+                }, 300);
+
+                this.updateSubmitButton();
+            }
+
+            async fetchCitySuggestions(query) {
+                try {
+                    // Simulate city autocomplete API
+                    const suggestions = await this.mockCityAutocompleteAPI(query);
+                    this.showCitySuggestions(suggestions);
+                } catch (error) {
+                    console.error('City suggestions failed:', error);
+                }
+            }
+
+            // Mock city autocomplete API
+            async mockCityAutocompleteAPI(query) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+
+                const cities = [
+                    'Austin, TX', 'Atlanta, GA', 'Arlington, TX', 'Anaheim, CA',
+                    'Boston, MA', 'Brooklyn, NY', 'Baltimore, MD', 'Birmingham, AL',
+                    'Chicago, IL', 'Charlotte, NC', 'Columbus, OH', 'Colorado Springs, CO',
+                    'Dallas, TX', 'Denver, CO', 'Detroit, MI', 'Durham, NC',
+                    'El Paso, TX', 'Fort Worth, TX', 'Fresno, CA', 'Garland, TX',
+                    'Houston, TX', 'Henderson, NV', 'Honolulu, HI', 'Irving, TX',
+                    'Jacksonville, FL', 'Jersey City, NJ', 'Kansas City, MO', 'Las Vegas, NV',
+                    'Los Angeles, CA', 'Louisville, KY', 'Memphis, TN', 'Miami, FL',
+                    'New York, NY', 'Nashville, TN', 'New Orleans, LA', 'Norfolk, VA',
+                    'Orlando, FL', 'Oakland, CA', 'Phoenix, AZ', 'Philadelphia, PA',
+                    'Raleigh, NC', 'Riverside, CA', 'San Antonio, TX', 'San Diego, CA',
+                    'San Francisco, CA', 'Seattle, WA', 'Tampa, FL', 'Tucson, AZ'
+                ];
+
+                return cities.filter(city =>
+                    city.toLowerCase().includes(query.toLowerCase())
+                ).slice(0, 5);
+            }
+
+            showCitySuggestions(suggestions) {
+                const container = document.getElementById('city-suggestions');
+
+                if (suggestions.length === 0) {
+                    this.hideCitySuggestions();
+                    return;
+                }
+
+                container.innerHTML = suggestions.map(city =>
+                    `<div class="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                          onclick="locationForm.selectCity('${city}')">${city}</div>`
+                ).join('');
+
+                container.classList.remove('hidden');
+            }
+
+            hideCitySuggestions() {
+                document.getElementById('city-suggestions').classList.add('hidden');
+            }
+
+            selectCity(city) {
+                this.cityInput.value = city;
+                this.hideCitySuggestions();
+                this.clearAutoFilledIndicator();
+                this.updateSubmitButton();
+            }
+
+            async requestGeolocation() {
+                if (!navigator.geolocation) {
+                    alert('Geolocation is not supported by this browser.');
+                    return;
+                }
+
+                this.useLocationBtn.disabled = true;
+                this.useLocationBtn.innerHTML = `
+                    <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Getting Location...
+                `;
+
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        try {
+                            const { latitude, longitude } = position.coords;
+                            const locationData = await this.reverseGeocode(latitude, longitude);
+
+                            if (locationData.zipCode) {
+                                this.zipCodeInput.value = locationData.zipCode;
+                                this.handleZipCodeInput(locationData.zipCode);
+                            }
+
+                            if (locationData.city) {
+                                this.cityInput.value = locationData.city;
+                                this.updateSubmitButton();
+                            }
+                        } catch (error) {
+                            alert('Unable to determine your location. Please enter manually.');
+                        } finally {
+                            this.resetLocationButton();
+                        }
+                    },
+                    (error) => {
+                        let message = 'Unable to get your location. ';
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                message += 'Location access was denied.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                message += 'Location information is unavailable.';
+                                break;
+                            case error.TIMEOUT:
+                                message += 'Location request timed out.';
+                                break;
+                        }
+                        alert(message);
+                        this.resetLocationButton();
+                    }
+                );
+            }
+
+            // Mock reverse geocoding
+            async reverseGeocode(lat, lng) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Mock response - in real implementation, use Google Maps or similar API
+                return {
+                    city: 'Austin',
+                    zipCode: '78759'
+                };
+            }
+
+            resetLocationButton() {
+                this.useLocationBtn.disabled = false;
+                this.useLocationBtn.innerHTML = `
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    Use My Current Location
+                `;
+            }
+
+            // UI State Management
+            setFieldError(fieldName, message) {
+                const input = document.getElementById(fieldName);
+                const errorDiv = document.getElementById(`${fieldName}-error`);
+
+                input.classList.add('border-error', 'ring-error');
+                input.classList.remove('border-success', 'ring-success');
+                errorDiv.textContent = message;
+                errorDiv.classList.remove('hidden');
+
+                this.hideFieldSuccess(fieldName);
+            }
+
+            clearFieldError(fieldName) {
+                const input = document.getElementById(fieldName);
+                const errorDiv = document.getElementById(`${fieldName}-error`);
+
+                input.classList.remove('border-error', 'ring-error');
+                errorDiv.classList.add('hidden');
+            }
+
+            setFieldSuccess(fieldName) {
+                const input = document.getElementById(fieldName);
+                const successDiv = document.getElementById(`${fieldName}-success`);
+
+                input.classList.add('border-success', 'ring-success');
+                input.classList.remove('border-error', 'ring-error');
+                successDiv.classList.remove('hidden');
+
+                this.clearFieldError(fieldName);
+            }
+
+            hideFieldSuccess(fieldName) {
+                const successDiv = document.getElementById(`${fieldName}-success`);
+                successDiv.classList.add('hidden');
+            }
+
+            clearFieldState(fieldName) {
+                this.clearFieldError(fieldName);
+                this.hideFieldSuccess(fieldName);
+                const input = document.getElementById(fieldName);
+                input.classList.remove('border-error', 'ring-error', 'border-success', 'ring-success');
+            }
+
+            showLoading(fieldName) {
+                document.getElementById(`${fieldName}-loading`).classList.remove('hidden');
+            }
+
+            hideLoading(fieldName) {
+                document.getElementById(`${fieldName}-loading`).classList.add('hidden');
+            }
+
+            showAutoFilledIndicator() {
+                document.getElementById('city-autofilled').classList.remove('hidden');
+            }
+
+            clearAutoFilledIndicator() {
+                document.getElementById('city-autofilled').classList.add('hidden');
+                this.isAutoFilled = false;
+            }
+
+            clearCityAutoFill() {
+                if (this.isAutoFilled) {
+                    this.cityInput.value = '';
+                    this.clearAutoFilledIndicator();
+                }
+            }
+
+            updateSubmitButton() {
+                const zipValid = this.zipCodeInput.value.length === 5 &&
+                               /^\d{5}$/.test(this.zipCodeInput.value);
+                const cityValid = this.cityInput.value.trim().length > 0;
+
+                this.submitBtn.disabled = !(zipValid && cityValid);
+            }
+
+            addAriaLiveRegion() {
+                const liveRegion = document.createElement('div');
+                liveRegion.setAttribute('aria-live', 'polite');
+                liveRegion.setAttribute('aria-atomic', 'true');
+                liveRegion.className = 'sr-only';
+                liveRegion.id = 'live-region';
+                document.body.appendChild(liveRegion);
+            }
+
+            announceToScreenReader(message) {
+                const liveRegion = document.getElementById('live-region');
+                liveRegion.textContent = message;
+            }
+
+            handleSubmit() {
+                const formData = {
+                    zipCode: this.zipCodeInput.value,
+                    city: this.cityInput.value
+                };
+
+                console.log('Form submitted:', formData);
+
+                // Simulate form submission
+                this.submitBtn.innerHTML = `
+                    <svg class="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Searching Homes...
+                `;
+                this.submitBtn.disabled = true;
+
+                setTimeout(() => {
+                    alert(`Great! Searching for homes in ${formData.city}, ${formData.zipCode}`);
+                    this.submitBtn.innerHTML = 'Continue to Home Search';
+                    this.submitBtn.disabled = false;
+                }, 2000);
+            }
+        }
+
+        // Initialize the form when DOM is loaded
+        let locationForm;
+        document.addEventListener('DOMContentLoaded', () => {
+            locationForm = new SmartLocationForm();
+        });
+    </script>
+</body>
+</html>
