@@ -4,6 +4,7 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { PlanGenerationInput } from '@/validators/planning-schemas'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 interface TestScenario {
   name: string
@@ -417,6 +418,15 @@ export default function DemoPage() {
     isStreaming?: boolean
   }>({})
 
+  // Performance tracking state
+  const [performanceMetrics, setPerformanceMetrics] = useState<{
+    startTime?: number
+    endTime?: number
+    totalDuration?: number
+    timeToFirstToken?: number
+    isTracking?: boolean
+  }>({})
+
   // Manual testing form state
   const [showManualForm, setShowManualForm] = useState(false)
   const [manualTestData, setManualTestData] = useState<PlanGenerationInput>({
@@ -478,12 +488,56 @@ export default function DemoPage() {
     useGrounding: true,
     useStructuredOutput: true,
     thinkingBudget: -1,
-    temperature: 0.2
+    temperature: 0.2,
+    customPrompt: ''
   })
+
+  // Prompt presets
+  const promptPresets = [
+    {
+      name: 'Default (Comprehensive)',
+      value: '',
+      description: 'Standard comprehensive analysis with all sections'
+    },
+    {
+      name: 'Budget Focused',
+      value: 'Focus heavily on affordability analysis, monthly payment calculations, and cost-saving strategies. Provide detailed budget breakdowns and financial planning tips.',
+      description: 'Emphasizes financial aspects and budget optimization'
+    },
+    {
+      name: 'First-Time Buyer Friendly',
+      value: 'Provide extra educational content and explain all real estate terms. Include step-by-step guidance for first-time homebuyers. Use simple, encouraging language.',
+      description: 'More educational, beginner-friendly tone'
+    },
+    {
+      name: 'Concise & Direct',
+      value: 'Provide only essential information in a brief, bullet-point format. Skip detailed explanations and focus on actionable recommendations.',
+      description: 'Shorter output with key points only'
+    },
+    {
+      name: 'Spanish Language Enhanced',
+      value: 'Cuando el idioma sea español, usa expresiones naturales y culturalmente apropiadas. Incluye recursos específicos para la comunidad hispana.',
+      description: 'Better Spanish localization and cultural context'
+    },
+    {
+      name: 'Risk-Averse',
+      value: 'Emphasize conservative financial strategies, stability, and risk mitigation. Highlight traditional loan products and conventional approaches.',
+      description: 'Conservative recommendations, lower risk'
+    }
+  ]
 
   const testGeminiIntegration = async () => {
     setLoading(true)
     setResults({})
+
+    const startTime = Date.now()
+    setPerformanceMetrics({
+      startTime,
+      isTracking: true,
+      timeToFirstToken: undefined,
+      endTime: undefined,
+      totalDuration: undefined
+    })
 
     try {
       console.log('🚀 Starting Gemini test with scenario:', selectedScenario.name)
@@ -495,7 +549,8 @@ export default function DemoPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          scenario: selectedScenario.data
+          scenario: selectedScenario.data,
+          aiConfig: aiConfig
         })
       })
 
@@ -505,15 +560,33 @@ export default function DemoPage() {
         throw new Error(result.error || 'API request failed')
       }
 
+      const endTime = Date.now()
+      const totalDuration = endTime - startTime
+
       setResults({
         structured: result.structured,
         markdown: result.markdown
       })
 
+      setPerformanceMetrics(prev => ({
+        ...prev,
+        endTime,
+        totalDuration,
+        isTracking: false
+      }))
+
       console.log('✅ Test completed successfully!')
+      console.log(`⏱️ Total duration: ${(totalDuration / 1000).toFixed(2)}s`)
 
     } catch (error) {
       console.error('❌ Test failed:', error)
+      const endTime = Date.now()
+      setPerformanceMetrics(prev => ({
+        ...prev,
+        endTime,
+        totalDuration: endTime - (prev.startTime || endTime),
+        isTracking: false
+      }))
       setResults({
         error: error instanceof Error ? error.message : 'Unknown error'
       })
@@ -527,28 +600,28 @@ export default function DemoPage() {
     setStreamingContent('')
     setResults({})
 
+    const startTime = Date.now()
+    let firstTokenTime: number | undefined = undefined
+    setPerformanceMetrics({
+      startTime,
+      isTracking: true,
+      timeToFirstToken: undefined,
+      endTime: undefined,
+      totalDuration: undefined
+    })
+
     try {
       console.log('🚀 Starting streaming Gemini test with scenario:', selectedScenario.name)
 
-      // Create EventSource for server-sent events
-      const eventSource = new EventSource('/api/demo-stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          scenario: selectedScenario.data
-        })
-      })
-
-      // Alternative approach using fetch with streaming
+      // Use fetch with streaming
       const response = await fetch('/api/demo-stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          scenario: selectedScenario.data
+          scenario: selectedScenario.data,
+          aiConfig: aiConfig
         })
       })
 
@@ -581,16 +654,39 @@ export default function DemoPage() {
               if (data.type === 'start') {
                 console.log('📡 Streaming started:', data.message)
               } else if (data.type === 'chunk') {
+                // Track time to first token
+                if (!firstTokenTime) {
+                  firstTokenTime = Date.now()
+                  const ttft = firstTokenTime - startTime
+                  setPerformanceMetrics(prev => ({
+                    ...prev,
+                    timeToFirstToken: ttft
+                  }))
+                  console.log(`⚡ Time to first token: ${(ttft / 1000).toFixed(2)}s`)
+                }
+
                 accumulatedMarkdown = data.accumulated
                 setStreamingContent(accumulatedMarkdown)
                 console.log(`📨 Received chunk ${data.chunkNumber}`)
               } else if (data.type === 'complete') {
                 console.log('✅ Streaming complete, received structured data')
+                const endTime = Date.now()
+                const totalDuration = endTime - startTime
+
+                setPerformanceMetrics(prev => ({
+                  ...prev,
+                  endTime,
+                  totalDuration,
+                  isTracking: false
+                }))
+
                 setResults({
                   structured: data.structured,
                   markdown: data.fullMarkdown,
                   isStreaming: false
                 })
+
+                console.log(`⏱️ Total streaming duration: ${(totalDuration / 1000).toFixed(2)}s`)
               } else if (data.type === 'error') {
                 throw new Error(data.error)
               }
@@ -864,36 +960,48 @@ export default function DemoPage() {
           </div>
 
           {/* Test Buttons */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button
-              onClick={testGeminiIntegration}
-              disabled={loading || streaming}
-              className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Testing Integration...
+          <div className="space-y-3">
+            {aiConfig.customPrompt && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start">
+                <span className="text-yellow-600 text-xl mr-2">💬</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-yellow-900">Custom Prompt Active</p>
+                  <p className="text-xs text-yellow-800 mt-1 line-clamp-2">{aiConfig.customPrompt}</p>
                 </div>
-              ) : (
-                '🚀 Test Regular (38-46s)'
-              )}
-            </button>
+              </div>
+            )}
 
-            <button
-              onClick={testStreamingIntegration}
-              disabled={loading || streaming}
-              className="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {streaming ? (
-                <div className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Streaming Live...
-                </div>
-              ) : (
-                '⚡ Test Streaming (Real-time)'
-              )}
-            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                onClick={testGeminiIntegration}
+                disabled={loading || streaming}
+                className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Testing Integration...
+                  </div>
+                ) : (
+                  '🚀 Test Regular (38-46s)'
+                )}
+              </button>
+
+              <button
+                onClick={testStreamingIntegration}
+                disabled={loading || streaming}
+                className="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {streaming ? (
+                  <div className="flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Streaming Live...
+                  </div>
+                ) : (
+                  '⚡ Test Streaming (Real-time)'
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -956,67 +1064,237 @@ export default function DemoPage() {
               </div>
             )}
 
-            {/* Markdown Analysis Display */}
-            {results.markdown && (
+            {/* Tabbed Results Interface */}
+            {(results.markdown || results.structured) && (
               <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-black mb-4 flex items-center">
-                  <span className="mr-3 text-2xl">📝</span>
-                  Markdown Analysis (Formatted)
-                </h3>
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
-                  <div className="prose prose-sm max-w-none">
-                    <div className="bg-white rounded-lg p-4 text-sm leading-relaxed">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          h2: ({children}) => <h2 className="text-lg font-semibold text-black mt-4 mb-2 first:mt-0">{children}</h2>,
-                          h3: ({children}) => <h3 className="text-base font-medium text-black mt-3 mb-2">{children}</h3>,
-                          p: ({children}) => <p className="mb-3 text-black">{children}</p>,
-                          ul: ({children}) => <ul className="mb-3 ml-4 list-disc text-black">{children}</ul>,
-                          ol: ({children}) => <ol className="mb-3 ml-4 list-decimal text-black">{children}</ol>,
-                          li: ({children}) => <li className="mb-1 text-black">{children}</li>,
-                          strong: ({children}) => <strong className="font-semibold text-black">{children}</strong>,
-                          table: ({children}) => <table className="w-full border-collapse border border-gray-200 my-4 bg-white rounded-lg overflow-hidden">{children}</table>,
-                          thead: ({children}) => <thead className="bg-gray-100">{children}</thead>,
-                          tbody: ({children}) => <tbody>{children}</tbody>,
-                          tr: ({children}) => <tr className="border-b border-gray-200 last:border-b-0">{children}</tr>,
-                          th: ({children}) => <th className="px-4 py-3 text-left font-semibold text-black bg-gray-100">{children}</th>,
-                          td: ({children}) => <td className="px-4 py-3 text-black border-r border-gray-200 last:border-r-0">{children}</td>,
-                        }}
-                      >
-                        {results.markdown}
-                      </ReactMarkdown>
-                    </div>
+                <Tabs defaultValue="formatted" className="w-full">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold text-black flex items-center">
+                      <span className="mr-3 text-2xl">📊</span>
+                      Test Results
+                    </h3>
+                    <TabsList>
+                      <TabsTrigger value="formatted">
+                        <span className="mr-2">📝</span>
+                        Formatted
+                      </TabsTrigger>
+                      <TabsTrigger value="raw">
+                        <span className="mr-2">📄</span>
+                        Raw Markdown
+                      </TabsTrigger>
+                      {results.structured && (
+                        <TabsTrigger value="json">
+                          <span className="mr-2">🔧</span>
+                          JSON
+                        </TabsTrigger>
+                      )}
+                      <TabsTrigger value="metrics">
+                        <span className="mr-2">⚡</span>
+                        Metrics
+                      </TabsTrigger>
+                    </TabsList>
                   </div>
-                </div>
-              </div>
-            )}
 
-            {/* Raw Markdown Display */}
-            {results.markdown && (
-              <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-black mb-4 flex items-center">
-                  <span className="mr-3 text-2xl">📄</span>
-                  Raw Markdown Output
-                </h3>
-                <pre className="text-sm text-black bg-gray-100 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap">
-                  {results.markdown}
-                </pre>
-              </div>
-            )}
+                  {/* Formatted Markdown View */}
+                  <TabsContent value="formatted">
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                      <div className="prose prose-sm max-w-none">
+                        <div className="bg-white rounded-lg p-4 text-sm leading-relaxed">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              h2: ({children}) => <h2 className="text-lg font-semibold text-black mt-4 mb-2 first:mt-0">{children}</h2>,
+                              h3: ({children}) => <h3 className="text-base font-medium text-black mt-3 mb-2">{children}</h3>,
+                              p: ({children}) => <p className="mb-3 text-black">{children}</p>,
+                              ul: ({children}) => <ul className="mb-3 ml-4 list-disc text-black">{children}</ul>,
+                              ol: ({children}) => <ol className="mb-3 ml-4 list-decimal text-black">{children}</ol>,
+                              li: ({children}) => <li className="mb-1 text-black">{children}</li>,
+                              strong: ({children}) => <strong className="font-semibold text-black">{children}</strong>,
+                              table: ({children}) => <table className="w-full border-collapse border border-gray-200 my-4 bg-white rounded-lg overflow-hidden">{children}</table>,
+                              thead: ({children}) => <thead className="bg-gray-100">{children}</thead>,
+                              tbody: ({children}) => <tbody>{children}</tbody>,
+                              tr: ({children}) => <tr className="border-b border-gray-200 last:border-b-0">{children}</tr>,
+                              th: ({children}) => <th className="px-4 py-3 text-left font-semibold text-black bg-gray-100">{children}</th>,
+                              td: ({children}) => <td className="px-4 py-3 text-black border-r border-gray-200 last:border-r-0">{children}</td>,
+                            }}
+                          >
+                            {results.markdown}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+                  </TabsContent>
 
-            {/* Structured Data Display */}
-            {results.structured && (
-              <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-black mb-4 flex items-center">
-                  <span className="mr-3 text-2xl">📊</span>
-                  Structured JSON Output
-                </h3>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <pre className="text-xs overflow-x-auto whitespace-pre-wrap text-black font-mono">
-                    {JSON.stringify(results.structured, null, 2)}
-                  </pre>
-                </div>
+                  {/* Raw Markdown View */}
+                  <TabsContent value="raw">
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(results.markdown || '')
+                            alert('Markdown copied to clipboard!')
+                          }}
+                          className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          📋 Copy Markdown
+                        </button>
+                      </div>
+                      <pre className="text-sm text-black bg-white rounded-lg p-4 overflow-x-auto whitespace-pre-wrap border border-gray-200">
+                        {results.markdown}
+                      </pre>
+                    </div>
+                  </TabsContent>
+
+                  {/* JSON View */}
+                  {results.structured && (
+                    <TabsContent value="json">
+                      <div className="bg-gray-50 rounded-xl p-4">
+                        <div className="flex justify-end mb-2">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(JSON.stringify(results.structured, null, 2))
+                              alert('JSON copied to clipboard!')
+                            }}
+                            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            📋 Copy JSON
+                          </button>
+                        </div>
+                        <pre className="text-xs overflow-x-auto whitespace-pre-wrap text-black font-mono bg-white rounded-lg p-4 border border-gray-200">
+                          {JSON.stringify(results.structured, null, 2)}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  )}
+
+                  {/* Metrics View */}
+                  <TabsContent value="metrics">
+                    <div className="bg-gray-50 rounded-xl p-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {/* Performance Metrics */}
+                        <div className="bg-white rounded-lg p-4 border border-gray-200">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                            <span className="mr-2">⏱️</span>
+                            Performance
+                          </h4>
+                          <div className="space-y-2 text-sm">
+                            {performanceMetrics.totalDuration !== undefined ? (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Total Duration:</span>
+                                <span className="font-bold text-green-600">
+                                  {(performanceMetrics.totalDuration / 1000).toFixed(2)}s
+                                </span>
+                              </div>
+                            ) : performanceMetrics.isTracking ? (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Duration:</span>
+                                <span className="font-medium text-blue-600 animate-pulse">
+                                  Running...
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Total Duration:</span>
+                                <span className="font-medium text-gray-400">N/A</span>
+                              </div>
+                            )}
+
+                            {performanceMetrics.timeToFirstToken !== undefined && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Time to First Token:</span>
+                                <span className="font-bold text-purple-600">
+                                  {(performanceMetrics.timeToFirstToken / 1000).toFixed(2)}s
+                                </span>
+                              </div>
+                            )}
+
+                            {performanceMetrics.startTime && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Started:</span>
+                                <span className="font-medium text-black">
+                                  {new Date(performanceMetrics.startTime).toLocaleTimeString()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Response Metrics */}
+                        <div className="bg-white rounded-lg p-4 border border-gray-200">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                            <span className="mr-2">📊</span>
+                            Response Size
+                          </h4>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Markdown Length:</span>
+                              <span className="font-medium text-black">{results.markdown?.length.toLocaleString() || 0} chars</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Est. Tokens:</span>
+                              <span className="font-medium text-black">~{Math.ceil((results.markdown?.length || 0) / 4).toLocaleString()}</span>
+                            </div>
+                            {results.structured && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">JSON Size:</span>
+                                <span className="font-medium text-black">{JSON.stringify(results.structured).length.toLocaleString()} bytes</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Content Analysis */}
+                        <div className="bg-white rounded-lg p-4 border border-gray-200">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                            <span className="mr-2">📝</span>
+                            Content Analysis
+                          </h4>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Lines:</span>
+                              <span className="font-medium text-black">{results.markdown?.split('\n').length || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Tables:</span>
+                              <span className="font-medium text-black">{Math.floor((results.markdown?.match(/\|/g) || []).length / 2) || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Lists:</span>
+                              <span className="font-medium text-black">{(results.markdown?.match(/^[\*\-] /gm) || []).length}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Performance Comparison */}
+                      {performanceMetrics.totalDuration && performanceMetrics.timeToFirstToken && (
+                        <div className="mt-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-200">
+                          <h4 className="text-sm font-semibold text-purple-900 mb-2">⚡ Streaming Performance</h4>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-purple-700">Latency Reduction:</span>
+                              <span className="ml-2 font-bold text-purple-900">
+                                {((1 - (performanceMetrics.timeToFirstToken / performanceMetrics.totalDuration)) * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-purple-700">User waited:</span>
+                              <span className="ml-2 font-bold text-purple-900">
+                                {(performanceMetrics.timeToFirstToken / 1000).toFixed(2)}s vs {(performanceMetrics.totalDuration / 1000).toFixed(2)}s
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-6 bg-blue-50 rounded-lg p-4 border border-blue-200">
+                        <p className="text-sm text-blue-900">
+                          <strong>💡 Tip:</strong> Use streaming mode to reduce perceived latency. Time to first token shows when users see initial content vs waiting for the complete response.
+                        </p>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
             )}
           </div>
@@ -1043,7 +1321,7 @@ export default function DemoPage() {
               {/* AI Configuration Section */}
               <div className="bg-white rounded-lg p-6 border border-green-200">
                 <h4 className="text-lg font-semibold text-black mb-4">🤖 AI Configuration</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <label className="flex items-center">
                     <input
                       type="checkbox"
@@ -1089,6 +1367,77 @@ export default function DemoPage() {
                       step="0.1"
                       className="px-2 py-1 border border-gray-300 rounded text-sm text-black"
                     />
+                  </div>
+                </div>
+
+                {/* Prompt Customization */}
+                <div className="border-t border-green-200 pt-6">
+                  <h5 className="text-base font-semibold text-black mb-3 flex items-center">
+                    <span className="mr-2">💬</span>
+                    Custom Prompt Instructions
+                  </h5>
+
+                  <div className="space-y-4">
+                    {/* Preset Selector */}
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium text-black mb-2">Prompt Presets</label>
+                      <select
+                        value={aiConfig.customPrompt}
+                        onChange={(e) => setAiConfig(prev => ({...prev, customPrompt: e.target.value}))}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-black bg-white"
+                      >
+                        {promptPresets.map((preset, idx) => (
+                          <option key={idx} value={preset.value}>
+                            {preset.name}
+                          </option>
+                        ))}
+                      </select>
+                      {promptPresets.find(p => p.value === aiConfig.customPrompt)?.description && (
+                        <p className="text-xs text-gray-600 mt-1">
+                          {promptPresets.find(p => p.value === aiConfig.customPrompt)?.description}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Custom Prompt Textarea */}
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium text-black mb-2 flex items-center justify-between">
+                        <span>Custom Instructions (Optional)</span>
+                        <button
+                          onClick={() => setAiConfig(prev => ({...prev, customPrompt: ''}))}
+                          className="text-xs text-blue-600 hover:text-blue-700"
+                        >
+                          Clear
+                        </button>
+                      </label>
+                      <textarea
+                        value={aiConfig.customPrompt}
+                        onChange={(e) => setAiConfig(prev => ({...prev, customPrompt: e.target.value}))}
+                        placeholder="Add custom instructions to modify the AI's behavior and output style. These instructions will be appended to the system prompt.&#10;&#10;Example: 'Focus on investment potential and rental income analysis' or 'Use a friendly, conversational tone'"
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-black bg-white resize-y min-h-[100px] font-mono"
+                      />
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-xs text-gray-600">
+                          {aiConfig.customPrompt.length} characters
+                        </p>
+                        {aiConfig.customPrompt && (
+                          <p className="text-xs text-green-600 font-medium">
+                            ✓ Custom prompt active
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Examples/Tips */}
+                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                      <p className="text-xs font-semibold text-blue-900 mb-1">💡 Prompt Tips:</p>
+                      <ul className="text-xs text-blue-800 space-y-1">
+                        <li>• Be specific about what you want emphasized or de-emphasized</li>
+                        <li>• Adjust tone: "Use simple language" or "Provide technical details"</li>
+                        <li>• Change focus: "Prioritize X over Y" or "Skip Z entirely"</li>
+                        <li>• Format preference: "Use more bullet points" or "Provide narrative paragraphs"</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>
