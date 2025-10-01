@@ -118,6 +118,10 @@ export function WizardProvider({ children, totalSteps, locale }: WizardProviderP
       await new Promise(resolve => setTimeout(resolve, 150))
 
       setCurrentStep(stepId)
+
+      // Scroll to top smoothly for better mobile UX
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+
       setIsTransitioning(false)
     }
   }, [totalSteps, currentStep])
@@ -130,6 +134,10 @@ export function WizardProvider({ children, totalSteps, locale }: WizardProviderP
       await new Promise(resolve => setTimeout(resolve, 150))
 
       setCurrentStep(prev => prev + 1)
+
+      // Scroll to top smoothly for better mobile UX
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+
       setIsTransitioning(false)
     }
   }, [currentStep, totalSteps])
@@ -142,6 +150,10 @@ export function WizardProvider({ children, totalSteps, locale }: WizardProviderP
       await new Promise(resolve => setTimeout(resolve, 150))
 
       setCurrentStep(prev => prev - 1)
+
+      // Scroll to top smoothly for better mobile UX
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+
       setIsTransitioning(false)
     }
   }, [currentStep])
