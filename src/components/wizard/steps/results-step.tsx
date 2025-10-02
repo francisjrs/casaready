@@ -113,40 +113,40 @@ export function ResultsStep({}: ResultsStepProps) {
 
       {/* AI-Generated Report */}
       {reportData.reportContent && (
-        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-          <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-            <span className="mr-3 text-2xl">🤖</span>
-            {reportData.aiGenerated
-              ? t('wizard.steps.results.aiAnalysis')
-              : t('wizard.steps.results.comprehensiveAnalysis')}
-          </h3>
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
-            <div className="prose prose-sm max-w-none">
-              <div className="bg-white rounded-lg p-4 text-sm leading-relaxed">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      h2: ({children}) => <h2 className="text-lg font-semibold text-gray-900 mt-4 mb-2 first:mt-0">{children}</h2>,
-                      h3: ({children}) => <h3 className="text-base font-medium text-gray-800 mt-3 mb-2">{children}</h3>,
-                      p: ({children}) => <p className="mb-3 text-gray-700">{children}</p>,
-                      ul: ({children}) => <ul className="mb-3 ml-4 list-disc text-gray-700">{children}</ul>,
-                      ol: ({children}) => <ol className="mb-3 ml-4 list-decimal text-gray-700">{children}</ol>,
-                      li: ({children}) => <li className="mb-1 text-gray-700">{children}</li>,
-                      strong: ({children}) => <strong className="font-semibold text-gray-900">{children}</strong>,
-                      table: ({children}) => <table className="w-full border-collapse border border-gray-200 my-4 bg-white rounded-lg overflow-hidden">{children}</table>,
-                      thead: ({children}) => <thead className="bg-gray-100">{children}</thead>,
-                      tbody: ({children}) => <tbody>{children}</tbody>,
-                      tr: ({children}) => <tr className="border-b border-gray-200 last:border-b-0">{children}</tr>,
-                      th: ({children}) => <th className="px-4 py-3 text-left font-semibold text-gray-900 bg-gray-100">{children}</th>,
-                      td: ({children}) => <td className="px-4 py-3 text-gray-700 border-r border-gray-200 last:border-r-0">{children}</td>,
-                    }}
-                  >
-                    {cleanMarkdownTables(reportData.reportContent)}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            </div>
+        <div className="space-y-6">
+          <div className="prose prose-sm max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                h2: ({children}) => (
+                  <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm mb-6">
+                    <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight flex items-start gap-3">
+                      {children}
+                    </h2>
+                  </div>
+                ),
+                h3: ({children}) => <h3 className="text-base sm:text-lg font-semibold text-gray-800 mt-6 mb-3 leading-tight">{children}</h3>,
+                p: ({children}) => <p className="mb-3 text-gray-700 text-base leading-relaxed">{children}</p>,
+                ul: ({children}) => <ul className="mb-4 ml-5 sm:ml-6 list-disc text-gray-700 space-y-1">{children}</ul>,
+                ol: ({children}) => <ol className="mb-4 ml-5 sm:ml-6 list-decimal text-gray-700 space-y-1">{children}</ol>,
+                li: ({children}) => <li className="mb-1.5 text-gray-700 text-base leading-relaxed">{children}</li>,
+                strong: ({children}) => <strong className="font-bold text-gray-900">{children}</strong>,
+                table: ({children}) => (
+                  <div className="overflow-x-auto my-4 -mx-2 sm:mx-0">
+                    <table className="min-w-full border-collapse border border-gray-300 bg-white rounded-lg shadow-sm text-sm sm:text-base">{children}</table>
+                  </div>
+                ),
+                thead: ({children}) => <thead className="bg-gradient-to-r from-gray-100 to-gray-50">{children}</thead>,
+                tbody: ({children}) => <tbody className="divide-y divide-gray-200">{children}</tbody>,
+                tr: ({children}) => <tr className="hover:bg-gray-50 transition-colors">{children}</tr>,
+                th: ({children}) => <th className="px-3 sm:px-4 py-2.5 sm:py-3 text-left font-bold text-gray-900 bg-gray-100 border-b-2 border-gray-300 text-xs sm:text-sm uppercase tracking-wide">{children}</th>,
+                td: ({children}) => <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-gray-700 border-r border-gray-200 last:border-r-0 text-sm sm:text-base">{children}</td>,
+              }}
+            >
+              {cleanMarkdownTables(reportData.reportContent)}
+            </ReactMarkdown>
           </div>
+        </div>
       )}
 
       {/* Affordability Analysis */}
