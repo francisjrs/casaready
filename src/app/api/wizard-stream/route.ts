@@ -6,7 +6,7 @@ import type { Locale } from '@/lib/i18n'
 
 // Vercel serverless configuration
 export const runtime = 'nodejs' // Use Node.js runtime for Gemini API
-export const maxDuration = 30 // Max 30s for Hobby plan (60s for Pro)
+export const maxDuration = 60 // Max 60s for Pro plan (increase streaming capacity)
 export const dynamic = 'force-dynamic' // Always run dynamically for SSE
 
 export async function POST(request: NextRequest) {
