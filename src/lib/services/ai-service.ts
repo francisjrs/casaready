@@ -599,13 +599,39 @@ export async function generateHomebuyingReport(
       // Generate markdown analysis separately using privacy-safe input
       const markdownAnalysis = await geminiClient.generateMarkdownAnalysis(privacySafePlanInput)
 
+      // Filter program recommendations based on buyer qualifications
+      const filteredPrograms = personalizedPlan.programRecommendations
+        ?.filter(p => {
+          // Filter out VA Loan if user is not a military veteran
+          const isVALoan = p.programType === 'va' || p.name.toLowerCase().includes('va loan');
+          if (isVALoan) {
+            const isVeteran = wizardData.buyerType?.includes('veteran') || false;
+            if (!isVeteran) {
+              console.log('⚠️  Filtering out VA Loan recommendation - user is not a veteran');
+            }
+            return isVeteran;
+          }
+          return true;
+        })
+        ?.map(p => p.name) || [];
+
+      // Log AI extraction for debugging
+      console.log('📊 AI Response Extraction:', {
+        estimatedPrice: personalizedPlan.affordabilityEstimate?.recommendedPrice,
+        maxAffordable: personalizedPlan.affordabilityEstimate?.maxHomePrice,
+        monthlyPayment: personalizedPlan.affordabilityEstimate?.budgetBreakdown?.monthlyPayment,
+        programCount: filteredPrograms.length,
+        programs: filteredPrograms
+      });
+
       aiResult = {
         success: true,
         data: {
           plan: markdownAnalysis || JSON.stringify(personalizedPlan, null, 2),
           estimatedPrice: personalizedPlan.affordabilityEstimate?.recommendedPrice,
+          maxAffordable: personalizedPlan.affordabilityEstimate?.maxHomePrice,
           monthlyPayment: personalizedPlan.affordabilityEstimate?.budgetBreakdown?.monthlyPayment,
-          programFit: personalizedPlan.programRecommendations?.map(p => p.name) || [],
+          programFit: filteredPrograms,
           actionPlan: personalizedPlan.actionPlan?.phases?.flatMap(phase =>
             phase.steps.map(step => step.title)
           ) || [],
@@ -627,6 +653,7 @@ export async function generateHomebuyingReport(
         aiGenerated: true,
         // Override with AI recommendations if available
         ...(aiResult.data.estimatedPrice && { estimatedPrice: aiResult.data.estimatedPrice }),
+        ...(aiResult.data.maxAffordable && { maxAffordable: aiResult.data.maxAffordable }),
         ...(aiResult.data.monthlyPayment && { monthlyPayment: aiResult.data.monthlyPayment }),
         ...(aiResult.data.programFit && { programFit: aiResult.data.programFit }),
         ...(aiResult.data.actionPlan && { actionPlan: aiResult.data.actionPlan }),
