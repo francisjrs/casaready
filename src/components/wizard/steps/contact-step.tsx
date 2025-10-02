@@ -35,6 +35,9 @@ export function ContactStep({ onNext }: ContactStepProps) {
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [currentSection, setCurrentSection] = useState<string | null>(null)
+  const [sectionProgress, setSectionProgress] = useState({ current: 0, total: 4 })
 
   // Update contact info when form data changes
   useEffect(() => {
@@ -90,13 +93,23 @@ export function ContactStep({ onNext }: ContactStepProps) {
       ])
 
       if (streamResult) {
+        console.log('✅ Report generated successfully:', {
+          id: streamResult.id,
+          language: streamResult.language,
+          contentLength: streamResult.reportContent?.length || 0
+        })
         // Store the generated report in wizard context
         updateReportData(streamResult)
+        console.log('✅ Report stored in wizard context, navigating to results...')
         // Proceed to results step to display the report
         onNext()
+      } else {
+        console.error('❌ No report data received from stream')
+        setSubmissionError(t('wizard.steps.contact.errorGenerate') + ' - No data received from AI')
       }
 
     } catch (error) {
+      console.error('❌ Error in handleSubmit:', error)
       setSubmissionError(
         error instanceof Error
           ? error.message
@@ -125,20 +138,48 @@ export function ContactStep({ onNext }: ContactStepProps) {
 
   // Stream wizard report from our new streaming API
   const streamWizardReport = async (): Promise<ReportData | null> => {
+    console.log('🚀 Starting report generation stream...')
+
+    // Debug info for development
+    const requestPayload = {
+      wizardData,
+      contactInfo: formData,
+      locale
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      setDebugInfo({
+        timestamp: new Date().toISOString(),
+        endpoint: '/api/wizard-stream',
+        method: 'POST',
+        payload: requestPayload,
+        status: 'Sending request...'
+      })
+    }
+
     try {
       const response = await fetch('/api/wizard-stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          wizardData,
-          contactInfo: formData,
-          locale
-        })
+        body: JSON.stringify(requestPayload)
       })
 
+      console.log('📡 Stream response status:', response.status)
+
+      if (process.env.NODE_ENV === 'development') {
+        setDebugInfo(prev => ({
+          ...prev,
+          responseStatus: response.status,
+          responseHeaders: Object.fromEntries(response.headers.entries()),
+          status: response.ok ? 'Response received' : 'Error response'
+        }))
+      }
+
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ Stream request failed:', errorText)
         throw new Error(`Stream request failed: ${response.status}`)
       }
 
@@ -150,10 +191,16 @@ export function ContactStep({ onNext }: ContactStepProps) {
       const decoder = new TextDecoder()
       let accumulatedContent = ''
       let structuredData: ReportData | null = null
+      let chunkCount = 0
+
+      console.log('📨 Starting to read stream chunks...')
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          console.log(`✅ Stream reading completed. Total chunks: ${chunkCount}`)
+          break
+        }
 
         const chunk = decoder.decode(value, { stream: true })
         const lines = chunk.split('\n')
@@ -165,16 +212,47 @@ export function ContactStep({ onNext }: ContactStepProps) {
 
               switch (data.type) {
                 case 'start':
+                  console.log('🎬 Stream started:', data.message)
                   setStreamingStatus(data.message)
+                  if (data.totalSections) {
+                    setSectionProgress({ current: 0, total: data.totalSections })
+                  }
+                  break
+
+                case 'section-start':
+                  console.log(`📂 Section started: ${data.section} (${data.sectionNumber}/${data.totalSections})`)
+                  setCurrentSection(data.section)
+                  setSectionProgress({ current: data.sectionNumber, total: data.totalSections })
+                  setStreamingStatus(`${data.title} (${data.sectionNumber}/${data.totalSections})`)
+                  break
+
+                case 'section-chunk':
+                  chunkCount++
+                  accumulatedContent += data.content
+                  setStreamingContent(fixMarkdownTables(accumulatedContent))
+                  if (chunkCount % 5 === 0) {
+                    console.log(`📝 Section ${data.section}: ${chunkCount} chunks`)
+                  }
+                  break
+
+                case 'section-complete':
+                  console.log(`✅ Section complete: ${data.section}`)
                   break
 
                 case 'chunk':
-                  accumulatedContent = fixMarkdownTables(data.accumulated)
-                  setStreamingContent(accumulatedContent)
-                  setStreamingStatus(`Processing... (${data.chunkNumber} chunks)`)
+                  // Legacy support for old chunk format
+                  chunkCount++
+                  accumulatedContent = data.accumulated || (accumulatedContent + data.content)
+                  setStreamingContent(fixMarkdownTables(accumulatedContent))
                   break
 
                 case 'complete':
+                  console.log('✅ Stream complete event received')
+                  console.log('📊 Structured data:', {
+                    id: data.structured.id,
+                    language: data.structured.language,
+                    contentLength: data.structured.reportContent?.length || 0
+                  })
                   setStreamingStatus(t('wizard.steps.contact.streaming.success'))
                   structuredData = {
                     id: data.structured.id,
@@ -190,21 +268,40 @@ export function ContactStep({ onNext }: ContactStepProps) {
                     reportContent: fixMarkdownTables(data.structured.reportContent),
                     aiGenerated: data.structured.aiGenerated
                   }
+                  console.log('✅ Structured data created successfully')
                   break
 
                 case 'error':
+                  console.error('❌ Stream error event:', data.error)
                   throw new Error(data.error)
               }
             } catch (parseError) {
-              console.error('Failed to parse SSE data:', parseError)
+              console.error('❌ Failed to parse SSE data:', parseError, 'Line:', line)
             }
           }
         }
       }
 
+      if (!structuredData) {
+        console.error('❌ Stream completed but no structured data was created')
+      }
+
       return structuredData
     } catch (error) {
-      console.error('Streaming error:', error)
+      console.error('❌ Streaming error:', error)
+
+      if (process.env.NODE_ENV === 'development') {
+        setDebugInfo(prev => ({
+          ...prev,
+          error: {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            type: error?.constructor?.name || 'Unknown',
+            stack: error instanceof Error ? error.stack : undefined
+          },
+          status: 'Error occurred'
+        }))
+      }
+
       throw error
     }
   }
@@ -240,9 +337,11 @@ export function ContactStep({ onNext }: ContactStepProps) {
               <input
                 type="text"
                 id="firstName"
+                name="firstName"
+                autoComplete="given-name"
                 value={formData.firstName}
                 onChange={(e) => handleInputChange('firstName', e.target.value)}
-                className="w-full px-4 py-4 sm:py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200 touch-manipulation text-base"
+                className="w-full min-h-[44px] px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200 touch-manipulation text-base"
                 required
               />
             </div>
@@ -254,9 +353,11 @@ export function ContactStep({ onNext }: ContactStepProps) {
               <input
                 type="text"
                 id="lastName"
+                name="lastName"
+                autoComplete="family-name"
                 value={formData.lastName}
                 onChange={(e) => handleInputChange('lastName', e.target.value)}
-                className="w-full px-4 py-4 sm:py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200 touch-manipulation text-base"
+                className="w-full min-h-[44px] px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200 touch-manipulation text-base"
                 required
               />
             </div>
@@ -269,9 +370,12 @@ export function ContactStep({ onNext }: ContactStepProps) {
             <input
               type="email"
               id="email"
+              name="email"
+              autoComplete="email"
+              inputMode="email"
               value={formData.email}
               onChange={(e) => handleInputChange('email', e.target.value)}
-              className="w-full px-3 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              className="w-full min-h-[44px] px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent touch-manipulation text-base"
               required
             />
           </div>
@@ -283,10 +387,13 @@ export function ContactStep({ onNext }: ContactStepProps) {
             <input
               type="tel"
               id="phone"
+              name="phone"
+              autoComplete="tel"
+              inputMode="tel"
               value={formData.phone}
               onChange={(e) => handlePhoneChange(e.target.value)}
               placeholder={t('wizard.steps.contact.phonePlaceholder')}
-              className="w-full px-3 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              className="w-full min-h-[44px] px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent touch-manipulation text-base"
               required
             />
           </div>
@@ -312,8 +419,8 @@ export function ContactStep({ onNext }: ContactStepProps) {
         {/* Streaming Progress Display */}
         {isStreaming && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex">
-              <div className="text-blue-400">
+            <div className="flex items-start">
+              <div className="text-blue-400 mt-0.5">
                 <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -323,16 +430,39 @@ export function ContactStep({ onNext }: ContactStepProps) {
                 <h3 className="text-sm font-medium text-blue-800">
                   {t('wizard.steps.contact.streaming.title')}
                 </h3>
+
+                {/* Time Estimate */}
+                <p className="mt-1 text-xs text-blue-700 flex items-center">
+                  <span className="mr-1">⏱️</span>
+                  {t('wizard.steps.contact.streaming.timeEstimate')}
+                </p>
+
+                {/* Section Progress Bar */}
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-blue-600">
+                      Section {sectionProgress.current} of {sectionProgress.total}
+                    </span>
+                    <span className="text-xs text-blue-600">
+                      {Math.round((sectionProgress.current / sectionProgress.total) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${(sectionProgress.current / sectionProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
                 {streamingStatus && (
-                  <p className="mt-1 text-sm text-blue-600">{streamingStatus}</p>
+                  <p className="mt-2 text-sm text-blue-700 font-medium">{streamingStatus}</p>
                 )}
+
                 {streamingContent && (
-                  <div className="mt-3 max-h-32 overflow-y-auto">
-                    <div className="text-xs text-blue-700 bg-blue-100 rounded p-2 font-mono">
-                      {streamingContent.slice(-200)}...
-                    </div>
-                    <p className="text-xs text-blue-500 mt-1">
-                      {t('wizard.steps.contact.streaming.charactersGenerated').replace('{{count}}', streamingContent.length.toString())}
+                  <div className="mt-3">
+                    <p className="text-xs text-blue-600 mb-1">
+                      {streamingContent.length} characters generated
                     </p>
                   </div>
                 )}
@@ -383,6 +513,38 @@ export function ContactStep({ onNext }: ContactStepProps) {
         <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
           🔒 {t('wizard.steps.contact.privacyNote')}
         </div>
+
+        {/* Debug Information (Development Only) */}
+        {process.env.NODE_ENV === 'development' && debugInfo && (
+          <div className="mt-6 bg-gray-900 text-gray-100 rounded-lg p-4 border border-gray-700">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold text-yellow-400 flex items-center">
+                <span className="mr-2">🐛</span>
+                Debug Information (Dev Only)
+              </h4>
+              <button
+                type="button"
+                onClick={() => setDebugInfo(null)}
+                className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-gray-800"
+              >
+                ✕ Close
+              </button>
+            </div>
+            <details className="text-xs" open>
+              <summary className="cursor-pointer text-gray-300 font-semibold mb-2 hover:text-white">
+                View Debug Details
+              </summary>
+              <div className="bg-gray-950 rounded p-3 overflow-x-auto">
+                <pre className="text-xs leading-relaxed">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </div>
+            </details>
+            <div className="mt-3 text-xs text-gray-400 border-t border-gray-700 pt-2">
+              <span className="font-semibold">⚠️ Security:</span> This debug panel only appears in development mode and will not be visible in production.
+            </div>
+          </div>
+        )}
       </form>
     </div>
   )

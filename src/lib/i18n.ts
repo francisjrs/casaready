@@ -467,6 +467,7 @@ export const translations: Record<Locale, Translation> = {
           },
           streaming: {
             title: 'Generating Your Personalized Report',
+            timeEstimate: 'This will take approximately 40-60 seconds. Please wait...',
             aiGenerating: 'AI Generating...',
             generatingPlan: 'Generating Your Plan...',
             success: 'Report generated successfully!',
@@ -1252,6 +1253,7 @@ export const translations: Record<Locale, Translation> = {
           },
           streaming: {
             title: 'Generando Tu Reporte Personalizado',
+            timeEstimate: 'Esto tomará aproximadamente 40-60 segundos. Por favor espera...',
             aiGenerating: 'IA Generando...',
             generatingPlan: 'Generando Tu Plan...',
             success: '¡Reporte generado exitosamente!',
