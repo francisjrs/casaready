@@ -22,11 +22,11 @@ interface GeminiConfig {
   topK?: number;
 }
 
-// Default configuration using the newer gemini-2.5-flash model
+// Default configuration using gemini-2.5-pro model
 const DEFAULT_CONFIG: Omit<GeminiConfig, 'apiKey'> = {
-  model: 'gemini-2.5-flash', // Use the faster and more efficient flash model
-  temperature: 0.2, // Lower temperature for more deterministic structured output
-  maxOutputTokens: 3500, // Reduced for concise but educational responses
+  model: 'gemini-2.5-pro', // Use Pro model for highest quality output
+  temperature: 0.3, // Slightly higher for more natural, conversational language
+  maxOutputTokens: 4000, // Increased for comprehensive but simple explanations
   topP: 0.95, // Higher topP for better quality responses
   topK: 40
 };
@@ -39,7 +39,7 @@ interface StructuredOutputConfig {
 
 const DEFAULT_STRUCTURED_CONFIG: StructuredOutputConfig = {
   useStructuredOutput: true, // Enable structured output by default
-  thinkingBudget: -1, // Dynamic thinking mode
+  thinkingBudget: 0, // Disable thinking for faster responses (no latency from thinking tokens)
 };
 
 // Performance optimization configuration
@@ -55,7 +55,7 @@ interface PerformanceConfig {
 const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
   enableCaching: true,
   cacheExpirationMs: 300000, // 5 minutes cache
-  requestTimeoutMs: 30000, // 30 second timeout
+  requestTimeoutMs: 600000, // 10 minutes timeout (recommended for Gemini 2.5 Pro)
   maxConcurrentRequests: 10,
   enableTokenMonitoring: true,
   enableConnectionPooling: true,
@@ -163,6 +163,8 @@ Devuelve SOLO un objeto JSON válido que coincida con la estructura del esquema 
     type: 'markdown',
     version: '2.0.0',
     template: `**SYSTEM INSTRUCTIONS:** You are providing educational real estate guidance following TREC compliance guidelines. Provide personalized analysis based on buyer profile while emphasizing the need for professional consultation.
+
+**WRITING STYLE:** Write at a 3rd grade reading level. Use simple words, short sentences (6-10 words max), and explain all concepts clearly. Avoid jargon. If you must use a technical term, explain it in simple language immediately after.
 
 **TREC COMPLIANCE REQUIREMENTS:**
 - All information is for educational purposes only
@@ -278,6 +280,8 @@ Generate TREC-compliant analysis using buyer profile data. Follow conditional lo
     type: 'markdown',
     version: '2.0.0',
     template: `**INSTRUCCIONES DEL SISTEMA:** Eres un asesor hipotecario certificado con 15+ años de experiencia en el mercado inmobiliario estadounidense. Especializado en compradores primerizos y programas de asistencia. Tu expertise incluye análisis DTI, programas FHA/VA/USDA, préstamos ITIN, y estrategias de financiamiento especializadas.
+
+**ESTILO DE ESCRITURA:** Escribe a nivel de lectura de tercer grado. Usa palabras simples, oraciones cortas (6-10 palabras máximo), y explica todos los conceptos claramente. Evita jerga técnica. Si debes usar un término técnico, explícalo en lenguaje simple inmediatamente después.
 
 {{#if specializedGuidance}}
 {{specializedGuidance}}
@@ -1108,6 +1112,12 @@ Include specific program names, contact information, and current rates/incentive
           safetySettings: SAFETY_SETTINGS,
         };
 
+        // Add thinking mode configuration for faster response (disabled)
+        if (this.structuredConfig.thinkingBudget !== undefined) {
+          requestConfig.generationConfig.thinkingBudget = this.structuredConfig.thinkingBudget;
+          console.log(`🧠 Thinking budget set to: ${this.structuredConfig.thinkingBudget} (0 = disabled for speed)`);
+        }
+
         // Add Google Search grounding if requested
         if (useGrounding) {
           requestConfig.tools = [{ googleSearch: {} }];
@@ -1142,7 +1152,10 @@ Include specific program names, contact information, and current rates/incentive
    */
   async* generateMarkdownAnalysisStream(
     input: PlanGenerationInput,
-    useGrounding: boolean = true
+    useGrounding: boolean = true,
+    customPrompt?: string,
+    maxTokens?: number,
+    modelOverride?: string
   ): AsyncGenerator<string, void, unknown> {
     // Declare variables at function level for proper scope
     let totalText = '';
@@ -1157,31 +1170,76 @@ Include specific program names, contact information, and current rates/incentive
       // Validate input data
       const validatedInput = PlanGenerationInputSchema.parse(input);
 
-      const markdownPrompt = this.buildMarkdownPrompt(validatedInput, useGrounding);
+      // Use custom prompt if provided, otherwise build full template
+      const markdownPrompt = customPrompt || this.buildMarkdownPrompt(validatedInput, useGrounding);
 
-      console.log(`📤 Sending streaming markdown request to Gemini model: ${this.config.model} ${useGrounding ? '(with Google Search grounding)' : ''}`);
+      // Select model: use override if provided, otherwise use configured model
+      const selectedModel = modelOverride || this.config.model;
+
+      if (modelOverride) {
+        console.log(`🔄 Model override: Using ${modelOverride} instead of ${this.config.model}`);
+      }
+
+      // TOKEN COUNTING: Count input tokens before API call
+      let promptTokenCount = 0;
+      try {
+        const tokenCountResult = await this.genAI.models.countTokens({
+          model: selectedModel,
+          contents: markdownPrompt
+        });
+        promptTokenCount = tokenCountResult.totalTokens || 0;
+        console.log(`📊 Token count - Prompt: ${promptTokenCount} tokens (~${Math.round(promptTokenCount * 0.25)} words)`);
+
+        if (promptTokenCount > 3000) {
+          console.warn(`⚠️  Large prompt detected (${promptTokenCount} tokens). Consider reducing for better cache hits.`);
+        }
+      } catch (tokenError) {
+        console.warn('⚠️  Token counting failed:', tokenError);
+      }
+
+      if (customPrompt) {
+        console.log(`📤 Sending streaming markdown request with CUSTOM PROMPT to Gemini model: ${selectedModel} (grounding: ${useGrounding})`);
+      } else {
+        console.log(`📤 Sending streaming markdown request to Gemini model: ${selectedModel} ${useGrounding ? '(with Google Search grounding)' : ''}`);
+      }
 
       // Prepare request config with enhanced features
       const requestConfig: any = {
-        model: this.config.model,
+        model: selectedModel,
         contents: markdownPrompt,
         generationConfig: {
           temperature: this.config.temperature,
           topP: this.config.topP,
           topK: this.config.topK,
-          maxOutputTokens: this.config.maxOutputTokens,
+          maxOutputTokens: maxTokens || this.config.maxOutputTokens, // Use custom limit if provided
         },
         safetySettings: SAFETY_SETTINGS,
       };
 
-      // Add Google Search grounding if requested
-      if (useGrounding) {
+      if (maxTokens) {
+        console.log(`🎯 Custom output token limit: ${maxTokens} (default: ${this.config.maxOutputTokens})`);
+      }
+
+      // Add thinking mode configuration for faster streaming (disabled)
+      if (this.structuredConfig.thinkingBudget !== undefined) {
+        requestConfig.generationConfig.thinkingBudget = this.structuredConfig.thinkingBudget;
+        console.log(`🧠 Thinking budget set to: ${this.structuredConfig.thinkingBudget} (0 = disabled for speed)`);
+      }
+
+      // Add Google Search grounding if requested (and not using custom prompt)
+      if (useGrounding && !customPrompt) {
         requestConfig.tools = [{ googleSearch: {} }];
         console.log('🔍 Google Search grounding enabled for streaming analysis');
+      } else if (customPrompt) {
+        console.log('⚡ Google Search grounding DISABLED for custom prompt (faster response)');
       }
 
       // Use generateContentStream for streaming responses
       const stream = await this.genAI.models.generateContentStream(requestConfig);
+
+      // Track usage metadata
+      let outputTokenCount = 0;
+      let cachedTokenCount = 0;
 
       try {
         for await (const chunk of stream) {
@@ -1193,10 +1251,52 @@ Include specific program names, contact information, and current rates/incentive
             console.log(`📨 Received chunk ${chunkCount}, length: ${chunk.text.length} chars`);
             yield chunk.text;
           }
+
+          // Capture usage metadata from final chunk (if available)
+          if (chunk.usageMetadata) {
+            outputTokenCount = chunk.usageMetadata.candidatesTokenCount || 0;
+            cachedTokenCount = chunk.usageMetadata.cachedContentTokenCount || 0;
+          }
         }
         streamCompleted = true;
 
         const duration = Date.now() - startTime;
+        const totalTokens = promptTokenCount + outputTokenCount;
+
+        // USAGE METADATA LOGGING with cost estimation (model-specific pricing)
+        const isFlash = selectedModel.includes('flash');
+        const isPro = selectedModel.includes('pro');
+
+        // Pricing per million tokens
+        const costPerMillionTokens = isFlash ? 0.075 : 0.30;  // Flash: $0.075/M, Pro: $0.30/M (input)
+        const outputCostPerMillionTokens = isFlash ? 0.30 : 1.20; // Flash: $0.30/M, Pro: $1.20/M (output)
+        const cachedCostPerMillionTokens = isFlash ? 0.01875 : 0.075; // 75% discount on cached
+
+        const inputCost = ((promptTokenCount - cachedTokenCount) / 1000000) * costPerMillionTokens;
+        const cachedCost = (cachedTokenCount / 1000000) * cachedCostPerMillionTokens;
+        const outputCost = (outputTokenCount / 1000000) * outputCostPerMillionTokens;
+        const totalCost = inputCost + cachedCost + outputCost;
+
+        console.log(`📈 Usage Metadata:`, {
+          model: selectedModel,
+          promptTokens: promptTokenCount,
+          outputTokens: outputTokenCount,
+          cachedTokens: cachedTokenCount,
+          totalTokens: totalTokens,
+          cacheHitRate: promptTokenCount > 0 ? `${Math.round((cachedTokenCount / promptTokenCount) * 100)}%` : '0%',
+          duration: `${duration}ms`,
+          tokensPerSecond: Math.round((outputTokenCount / duration) * 1000),
+          cost: `$${totalCost.toFixed(6)}`,
+          costBreakdown: {
+            input: `$${inputCost.toFixed(6)}`,
+            cached: `$${cachedCost.toFixed(6)}`,
+            output: `$${outputCost.toFixed(6)}`
+          }
+        });
+
+        // Update token statistics
+        this.updateTokenStats(totalTokens);
+
         console.log(`✅ Gemini streaming completed in ${duration}ms, total length: ${totalText.length} chars, chunks: ${chunkCount}`);
         console.log(`✅ Successfully generated streaming markdown analysis for user: ${validatedInput.userProfile.contact.email}`);
 
@@ -1336,8 +1436,12 @@ Include specific program names, contact information, and current rates/incentive
 
     // Google Best Practice: System Instructions + Role Definition + Domain Context
     const baseInstructions = language === 'es' ?
-      `INSTRUCCIONES DEL SISTEMA: Eres un asesor hipotecario certificado con 15+ años de experiencia en el mercado inmobiliario estadounidense. Especializado en compradores primerizos y programas de asistencia. Tu expertise incluye análisis DTI, programas FHA/VA/USDA, préstamos ITIN, y estrategias de financiamiento especializadas.` :
-      `SYSTEM INSTRUCTIONS: You are a certified mortgage advisor with 15+ years of experience in the US real estate market. Specialized in first-time homebuyers and assistance programs. Your expertise includes DTI analysis, FHA/VA/USDA programs, ITIN loans, and specialized financing strategies.`;
+      `INSTRUCCIONES DEL SISTEMA: Eres un asesor hipotecario certificado con 15+ años de experiencia en el mercado inmobiliario estadounidense. Especializado en compradores primerizos y programas de asistencia. Tu expertise incluye análisis DTI, programas FHA/VA/USDA, préstamos ITIN, y estrategias de financiamiento especializadas.
+
+ESTILO DE ESCRITURA: Escribe a nivel de lectura de tercer grado. Usa palabras simples, oraciones cortas (6-10 palabras máximo), y explica todos los conceptos claramente. Evita jerga técnica. Si debes usar un término técnico, explícalo en lenguaje simple inmediatamente después.` :
+      `SYSTEM INSTRUCTIONS: You are a certified mortgage advisor with 15+ years of experience in the US real estate market. Specialized in first-time homebuyers and assistance programs. Your expertise includes DTI analysis, FHA/VA/USDA programs, ITIN loans, and specialized financing strategies.
+
+WRITING STYLE: Write at a 3rd grade reading level. Use simple words, short sentences (6-10 words max), and explain all concepts clearly. Avoid jargon. If you must use a technical term, explain it in simple language immediately after.`;
 
     const specializedGuidance = guidanceContexts.length > 0 ? `
 
