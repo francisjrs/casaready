@@ -785,6 +785,7 @@ export class GeminiPlanningClient {
 
   /**
    * Build user profile data string for template variables
+   * Enhanced to include buyer types, location priorities, and household size
    */
   private buildUserProfileData(input: PlanGenerationInput): string {
     const { userProfile, preferences } = input;
@@ -805,6 +806,9 @@ export class GeminiPlanningClient {
     const locationPriorities: string[] = (userProfile as any).locationPriorities ||
                                         (preferences.buyerSpecialization as any)?.rawLocationPriorities || [];
 
+    // Extract household size from user profile
+    const householdSize: number | undefined = (userProfile as any).householdSize;
+
     return `Income: $${userProfile.incomeDebt.annualIncome}/year
 Monthly Debts: $${userProfile.incomeDebt.monthlyDebts}
 Down Payment Available: $${userProfile.incomeDebt.downPaymentAmount}
@@ -817,7 +821,8 @@ Timeline: ${userProfile.location.timeframe}
 First-time Buyer: ${userProfile.location.firstTimeBuyer ? 'Yes' : 'No'}
 Risk Tolerance: ${preferences.riskTolerance || 'moderate'}
 Buyer Types: ${buyerTypes.length > 0 ? buyerTypes.join(', ') : 'Not specified'}
-Location Priorities: ${locationPriorities.length > 0 ? locationPriorities.join(', ') : 'Not specified'}`;
+Location Priorities: ${locationPriorities.length > 0 ? locationPriorities.join(', ') : 'Not specified'}
+Household Size: ${householdSize && householdSize > 0 ? `${householdSize} people` : 'Not specified'}`;
   }
 
   /**
@@ -1333,6 +1338,7 @@ Include specific program names, contact information, and current rates/incentive
   /**
    * Detect special buyer types and generate targeted guidance context
    * Updated to use explicit flags instead of biased inference
+   * NOW INCLUDES: Location priorities, household size, and lifestyle buyer types
    */
   private detectBuyerSpecializations(input: PlanGenerationInput): {
     types: string[],
@@ -1343,6 +1349,15 @@ Include specific program names, contact information, and current rates/incentive
     const types: string[] = [];
     const guidanceContexts: string[] = [];
     const specialization = preferences.buyerSpecialization;
+
+    // Extract raw buyer types from userProfile (captured from wizard)
+    const rawBuyerTypes: string[] = (userProfile as any).buyerTypes || [];
+
+    // Extract location priorities from userProfile (captured from wizard)
+    const locationPriorities: string[] = (userProfile as any).locationPriorities || [];
+
+    // Extract household size from userProfile (captured from wizard)
+    const householdSize: number | undefined = (userProfile as any).householdSize;
 
     // ITIN Taxpayer Detection (now explicit)
     if (specialization?.isITINTaxpayer) {
@@ -1360,7 +1375,7 @@ Include specific program names, contact information, and current rates/incentive
       userProfile.employment.workAddress.toLowerCase().includes(keyword)
     );
 
-    if (specialization?.isMilitaryVeteran || hasMillitaryEmployer) {
+    if (specialization?.isMilitaryVeteran || hasMillitaryEmployer || rawBuyerTypes.includes('veteran')) {
       types.push('MILITARY_VETERAN');
       guidanceContexts.push(language === 'es' ?
         `**CONTEXTO MILITAR/VETERANO:** Elegible para préstamo VA. BENEFICIOS: 0% enganche, sin seguro hipotecario (PMI), tasas competitivas, sin límites de precio. REQUISITOS: Certificado de Elegibilidad (COE) del VA, servicio activo o veterano elegible. VENTAJA: puede reusar beneficio VA si califica.` :
@@ -1402,11 +1417,139 @@ Include specific program names, contact information, and current rates/incentive
     }
 
     // First-Time Buyer (explicit flag or profile-based)
-    if (specialization?.isFirstTimeBuyer || userProfile.location.firstTimeBuyer) {
+    if (specialization?.isFirstTimeBuyer || userProfile.location.firstTimeBuyer || rawBuyerTypes.includes('first-time')) {
       types.push('FIRST_TIME_BUYER');
       guidanceContexts.push(language === 'es' ?
         `**CONTEXTO PRIMER COMPRADOR:** Elegible para múltiples programas de asistencia. BENEFICIOS: cursos gratuitos de compra de vivienda, programas de asistencia para enganche, tasas preferenciales FHA. RECURSOS: programas estatales y locales de asistencia, créditos fiscales para compradores primerizos.` :
         `**FIRST-TIME BUYER CONTEXT:** Eligible for multiple assistance programs. BENEFITS: free homebuyer education courses, down payment assistance programs, preferential FHA rates. RESOURCES: state and local assistance programs, first-time buyer tax credits.`
+      );
+    }
+
+    // Investor Buyer Detection (NEW)
+    if (rawBuyerTypes.includes('investor') || specialization?.isInvestor) {
+      types.push('INVESTOR');
+      guidanceContexts.push(language === 'es' ?
+        `**CONTEXTO INVERSIONISTA:** Compra de inversión/renta. REQUISITOS: típicamente 20-25% enganche, tasas más altas (0.5-0.75%), ratios DTI más estrictos. VENTAJAS: deducción de intereses, depreciación, potencial de apreciación. CONSIDERAR: flujo de efectivo positivo, tasas de vacancia, costos de mantenimiento, gestión de propiedades. Analizar cap rate y retorno sobre inversión.` :
+        `**INVESTOR CONTEXT:** Investment/rental property purchase. REQUIREMENTS: typically 20-25% down, higher rates (0.5-0.75% premium), stricter DTI ratios. BENEFITS: interest deduction, depreciation, appreciation potential. CONSIDER: positive cash flow, vacancy rates, maintenance costs, property management. Analyze cap rate and ROI.`
+      );
+    }
+
+    // Downsizing Buyer Detection (NEW)
+    if (rawBuyerTypes.includes('downsizing')) {
+      types.push('DOWNSIZING');
+      guidanceContexts.push(language === 'es' ?
+        `**CONTEXTO REDUCCIÓN DE TAMAÑO:** Transición a casa más pequeña/simple. VENTAJAS: típicamente sin hipoteca o hipoteca pequeña, equidad de venta previa, calificación fácil. CONSIDERACIONES: costos de mantenimiento más bajos, eficiencia energética, accesibilidad para envejecer en casa, HOA con servicios. ENFOQUE: simplicidad, ubicación conveniente, gastos mensuales reducidos.` :
+        `**DOWNSIZING CONTEXT:** Transitioning to smaller/simpler home. ADVANTAGES: typically no mortgage or small mortgage, equity from previous sale, easy qualification. CONSIDERATIONS: lower maintenance costs, energy efficiency, aging-in-place accessibility, HOA with services. FOCUS: simplicity, convenient location, reduced monthly expenses.`
+      );
+    }
+
+    // Upsizing Buyer Detection (NEW)
+    if (rawBuyerTypes.includes('upsizing')) {
+      types.push('UPSIZING');
+
+      // Build household-specific guidance if household size is provided
+      let householdGuidance = '';
+      if (householdSize) {
+        const minBedrooms = householdSize <= 2 ? 2 : householdSize <= 4 ? 3 : 4;
+        const minBathrooms = householdSize <= 2 ? 2 : householdSize <= 4 ? 2.5 : 3;
+
+        householdGuidance = language === 'es' ?
+          ` TAMAÑO DEL HOGAR: ${householdSize} personas - recomendar mínimo ${minBedrooms} habitaciones, ${minBathrooms} baños.` :
+          ` HOUSEHOLD SIZE: ${householdSize} people - recommend minimum ${minBedrooms} bedrooms, ${minBathrooms} bathrooms.`;
+      }
+
+      guidanceContexts.push(language === 'es' ?
+        `**CONTEXTO AMPLIACIÓN:** Creciendo familia o necesitando más espacio.${householdGuidance} VENTAJAS: equidad de casa actual, historial crediticio establecido. CONSIDERACIONES: pagos mensuales más altos, áreas con buenas escuelas, espacio de oficina en casa, patio para niños/mascotas. ESTRATEGIA: vender primero vs. comprar primero, préstamos puente si es necesario.` :
+        `**UPSIZING CONTEXT:** Growing family or needing more space.${householdGuidance} ADVANTAGES: equity from current home, established credit history. CONSIDERATIONS: higher monthly payments, good school districts, home office space, yard for kids/pets. STRATEGY: sell first vs. buy first, bridge loans if needed.`
+      );
+    }
+
+    // Relocating Buyer Detection (NEW)
+    if (rawBuyerTypes.includes('relocating')) {
+      types.push('RELOCATING');
+      guidanceContexts.push(language === 'es' ?
+        `**CONTEXTO REUBICACIÓN:** Mudanza por trabajo/personal. CONSIDERACIONES: nueva área desconocida, posible venta de propiedad previa, timeline ajustado. OPCIONES: préstamos de reubicación del empleador, renta temporal mientras busca, tours virtuales. ENFOQUE: investigar vecindarios a fondo, proximidad al trabajo, servicios del área, costo de vida local. PROGRAMA: algunos empleadores ofrecen asistencia con enganche/costos de cierre.` :
+        `**RELOCATING CONTEXT:** Moving for work/personal reasons. CONSIDERATIONS: unfamiliar new area, possible previous property sale, tight timeline. OPTIONS: employer relocation loans, temporary rental while searching, virtual tours. FOCUS: research neighborhoods thoroughly, commute proximity, area amenities, local cost of living. PROGRAM: some employers offer down payment/closing cost assistance.`
+      );
+    }
+
+    // Location Priority Guidance (NEW - UTILIZING UNDERUSED DATA)
+    if (locationPriorities.length > 0) {
+      types.push('LOCATION_PRIORITIES');
+
+      const priorityGuidance: { [key: string]: { en: string; es: string } } = {
+        schools: {
+          en: 'prioritize school district ratings (GreatSchools 7+), proximity to top-rated schools, consider future resale value for families',
+          es: 'priorizar calificaciones de distrito escolar (GreatSchools 7+), proximidad a escuelas de alta calificación, considerar valor de reventa futuro para familias'
+        },
+        commute: {
+          en: 'optimize for commute time (<30 min ideal), proximity to major highways, public transit access, calculate gas/toll costs',
+          es: 'optimizar tiempo de traslado (<30 min ideal), proximidad a carreteras principales, acceso a transporte público, calcular costos de gasolina/peajes'
+        },
+        safety: {
+          en: 'emphasize low crime neighborhoods (check NeighborhoodScout, CrimeReports), well-lit streets, active HOA/community watch',
+          es: 'enfatizar vecindarios de bajo crimen (verificar NeighborhoodScout, CrimeReports), calles bien iluminadas, HOA activo/vigilancia comunitaria'
+        },
+        walkability: {
+          en: 'highlight Walk Score 70+, pedestrian infrastructure, nearby grocery/retail within 1 mile, bike lanes',
+          es: 'destacar Walk Score 70+, infraestructura peatonal, tiendas/comercios cercanos dentro de 1 milla, carriles para bicicletas'
+        },
+        shopping: {
+          en: 'proximity to major retail centers, grocery stores, Target/Walmart within 5 miles, convenience services',
+          es: 'proximidad a centros comerciales principales, supermercados, Target/Walmart dentro de 5 millas, servicios de conveniencia'
+        },
+        parks: {
+          en: 'access to green spaces, community parks within walking distance, hiking trails, outdoor recreation',
+          es: 'acceso a espacios verdes, parques comunitarios a distancia caminable, senderos, recreación al aire libre'
+        },
+        nightlife: {
+          en: 'proximity to entertainment districts, restaurants, bars, cultural venues, downtown areas',
+          es: 'proximidad a distritos de entretenimiento, restaurantes, bares, lugares culturales, áreas del centro'
+        },
+        diversity: {
+          en: 'diverse communities, cultural amenities, inclusive neighborhoods, variety of restaurants/businesses',
+          es: 'comunidades diversas, servicios culturales, vecindarios inclusivos, variedad de restaurantes/negocios'
+        }
+      };
+
+      const priorityDescriptions = locationPriorities
+        .map(priority => priorityGuidance[priority]?.[language] || '')
+        .filter(desc => desc.length > 0);
+
+      if (priorityDescriptions.length > 0) {
+        guidanceContexts.push(language === 'es' ?
+          `**PRIORIDADES DE UBICACIÓN:** Este comprador valora específicamente: ${priorityDescriptions.join('; ')}. ACCIÓN: Recomendar vecindarios que se alineen con estas prioridades, mencionar servicios específicos del área.` :
+          `**LOCATION PRIORITIES:** This buyer specifically values: ${priorityDescriptions.join('; ')}. ACTION: Recommend neighborhoods that align with these priorities, mention specific area amenities.`
+        );
+      }
+    }
+
+    // Household Size Space Requirements (NEW - UTILIZING UNDERUSED DATA)
+    if (householdSize && householdSize > 0 && !types.includes('UPSIZING')) {
+      types.push('HOUSEHOLD_SIZE_GUIDANCE');
+
+      let spaceRecommendation = '';
+      if (householdSize === 1) {
+        spaceRecommendation = language === 'es' ?
+          'Soltero/a - considerar 1-2 habitaciones, 1 baño suficiente, 800-1200 sq ft ideal, condo/townhouse aceptable' :
+          'Single occupant - consider 1-2 bedrooms, 1 bath sufficient, 800-1200 sq ft ideal, condo/townhouse acceptable';
+      } else if (householdSize === 2) {
+        spaceRecommendation = language === 'es' ?
+          'Pareja/2 personas - recomendar 2 habitaciones mínimo, 2 baños, 1000-1500 sq ft, oficina en casa opcional' :
+          'Couple/2 people - recommend 2 bedrooms minimum, 2 baths, 1000-1500 sq ft, home office optional';
+      } else if (householdSize <= 4) {
+        spaceRecommendation = language === 'es' ?
+          'Familia pequeña (3-4) - necesita 3 habitaciones mínimo, 2-2.5 baños, 1500-2200 sq ft, patio preferible' :
+          'Small family (3-4) - needs 3 bedrooms minimum, 2-2.5 baths, 1500-2200 sq ft, yard preferable';
+      } else {
+        spaceRecommendation = language === 'es' ?
+          'Familia grande (5+) - requiere 4+ habitaciones, 3+ baños, 2200+ sq ft, espacio de almacenamiento adicional crítico' :
+          'Large family (5+) - requires 4+ bedrooms, 3+ baths, 2200+ sq ft, additional storage space critical';
+      }
+
+      guidanceContexts.push(language === 'es' ?
+        `**TAMAÑO DEL HOGAR:** ${householdSize} personas. RECOMENDACIÓN DE ESPACIO: ${spaceRecommendation}. CONSIDERAR: planes de expansión familiar, visitantes frecuentes, trabajo desde casa.` :
+        `**HOUSEHOLD SIZE:** ${householdSize} people. SPACE RECOMMENDATION: ${spaceRecommendation}. CONSIDER: family expansion plans, frequent visitors, work from home needs.`
       );
     }
 

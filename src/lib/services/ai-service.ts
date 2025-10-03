@@ -38,6 +38,15 @@ export interface ContactInfo {
   maritalStatus?: string
 }
 
+// Section-based report data for progressive rendering
+export interface ReportSection {
+  id: string
+  title: string
+  content: string
+  status: 'pending' | 'streaming' | 'completed' | 'error'
+  error?: string
+}
+
 export interface ReportData {
   estimatedPrice: number
   maxAffordable: number
@@ -48,11 +57,19 @@ export interface ReportData {
   notes: string
   primaryLeadType: string
   aiGenerated: boolean
+  // New: Section-based content for progressive rendering
+  sections?: {
+    financial?: ReportSection
+    loanOptions?: ReportSection
+    location?: ReportSection
+    disclaimer?: ReportSection
+  }
   reportContent?: string
 }
 
 /**
  * Creates a privacy-safe plan input that excludes contact information
+ * Enhanced to pass through buyerType, locationPriority, and householdSize
  */
 function createPrivacySafePlanInput(wizardData: WizardData, locale: Locale): PrivacySafePlanGenerationInput {
   return {
@@ -81,8 +98,12 @@ function createPrivacySafePlanInput(wizardData: WizardData, locale: Locale): Pri
         homeType: 'single-family',
         timeframe: wizardData.timeline || '6-12',
         firstTimeBuyer: wizardData.buyerType?.includes('first-time') || false
-      }
-    },
+      },
+      // Pass through raw wizard data for enhanced prompt generation
+      buyerTypes: wizardData.buyerType || [],
+      locationPriorities: wizardData.locationPriority || [],
+      householdSize: wizardData.householdSize
+    } as any,
     preferences: {
       language: locale,
       riskTolerance: 'moderate' as const,
@@ -94,8 +115,11 @@ function createPrivacySafePlanInput(wizardData: WizardData, locale: Locale): Pri
         isUSDAEligible: false,
         isITINTaxpayer: false,
         isInvestor: wizardData.buyerType?.includes('investor') || false,
-        needsAccessibilityFeatures: false
-      }
+        needsAccessibilityFeatures: false,
+        // Store raw data for backward compatibility
+        rawBuyerTypes: wizardData.buyerType || [],
+        rawLocationPriorities: wizardData.locationPriority || []
+      } as any
     }
   }
 }
