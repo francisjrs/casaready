@@ -3,6 +3,9 @@ import { createGeminiClient } from '@/ai/gemini-client'
 import { createPrivacySafePlanInput, type WizardData, type ContactInfo } from '@/lib/services/ai-service'
 import type { PrivacySafePlanGenerationInput } from '@/validators/planning-schemas'
 import type { Locale } from '@/lib/i18n'
+import { getGeminiConfig } from '@/lib/env'
+import { classifyLead, getLeadTypeDescription } from '@/lib/services/lead-classifier'
+import { buildSectionPrompts } from '@/lib/services/prompt-builder'
 
 // Vercel serverless configuration
 export const runtime = 'nodejs' // Use Node.js runtime for Gemini API
@@ -28,6 +31,18 @@ export async function POST(request: NextRequest) {
 
     console.log(`📊 Wizard Streaming API: Processing report for ${contactInfo.firstName} ${contactInfo.lastName}`)
     console.log(`🌐 Wizard Streaming API: Locale set to "${locale}"`)
+
+    // ============================================
+    // STEP 1: CLASSIFY LEAD
+    // ============================================
+    const leadProfile = classifyLead(wizardData, locale)
+    console.log(`🎯 Lead Classification: ${leadProfile.leadType} (${leadProfile.primaryCategory})`)
+    console.log(`💳 Credit Tier: ${leadProfile.creditTier} | DTI: ${leadProfile.debtToIncome}%`)
+    console.log(`🏦 Eligible Loans: ${leadProfile.loanEligibility.eligible.join(', ')}`)
+    console.log(`✅ Recommended: ${leadProfile.loanEligibility.recommended}`)
+    if (leadProfile.specialConsiderations.length > 0) {
+      console.log(`⚠️  Special Considerations: ${leadProfile.specialConsiderations.join(', ')}`)
+    }
 
     // Create privacy-safe plan input (removes contact information)
     const privacySafePlanInput: PrivacySafePlanGenerationInput = createPrivacySafePlanInput(wizardData, locale)
@@ -86,32 +101,155 @@ export async function POST(request: NextRequest) {
             financial: '',
             loanOptions: '',
             location: '',
+            grants: '',
             disclaimer: ''
           }
 
-          // MODEL SELECTION STRATEGY:
+          // MODEL SELECTION STRATEGY: Now configurable via environment variables!
           // - Financial Analysis: Use Pro (complex calculations, DTI, cash needed)
           // - Loan Options: Use Flash (program comparison, faster by 3x)
           // - Location: Use Flash (market data lookup, faster by 3x)
           // Expected performance: 45s -> ~25s (45% faster)
 
-          const MODELS = {
-            financial: 'gemini-2.5-pro',    // Complex math requires Pro
-            loanOptions: 'gemini-2.5-flash', // Simple comparison, use Flash for speed
-            location: 'gemini-2.5-flash'     // Market lookup, use Flash for speed
-          }
+          const geminiConfig = getGeminiConfig()
+          const MODELS = geminiConfig.models
+          const TOKEN_LIMITS = geminiConfig.maxOutputTokens
+          const GROUNDING = geminiConfig.grounding
 
-          console.log(`🎯 Multi-model strategy: Financial=${MODELS.financial}, LoanOptions=${MODELS.loanOptions}, Location=${MODELS.location}`)
+          console.log(`🎯 Multi-model strategy (ENV configured):`, {
+            financial: MODELS.financial,
+            loanOptions: MODELS.loanOptions,
+            location: MODELS.location,
+            parallelEnabled: geminiConfig.enableParallelGeneration,
+            grounding: GROUNDING
+          })
+
+          // ============================================
+          // STEP 2: BUILD CUSTOM PROMPTS FOR LEAD TYPE
+          // ============================================
+          const customPrompts = buildSectionPrompts(leadProfile, wizardData)
+          console.log(`📝 Custom prompts generated for ${leadProfile.leadType}`)
+          console.log(`   Financial prompt length: ${customPrompts.financial.length} chars`)
+          console.log(`   Loan prompt length: ${customPrompts.loanOptions.length} chars`)
+          console.log(`   Location prompt length: ${customPrompts.location.length} chars`)
 
           // Send initial status
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: 'start',
             message: locale === 'es' ? 'Generando tu reporte personalizado...' : 'Generating your personalized report...',
-            totalSections: 4
+            totalSections: 5
           })}\n\n`))
 
-          // SECTION 1: Financial Analysis
+          // Performance monitoring
+          const sectionMetrics: Record<string, { start: number; end: number; tokens: number; model: string }> = {
+            financial: { start: 0, end: 0, tokens: 0, model: MODELS.financial },
+            loanOptions: { start: 0, end: 0, tokens: 0, model: MODELS.loanOptions },
+            location: { start: 0, end: 0, tokens: 0, model: MODELS.location },
+          }
+          const overallStartTime = performance.now()
+
+          // Check if parallel generation is enabled
+          if (geminiConfig.enableParallelGeneration) {
+            console.log('⚡ PARALLEL GENERATION ENABLED - Processing all sections concurrently...')
+
+            // Generate all sections in parallel
+            const [financialResult, loanResult, locationResult] = await Promise.allSettled([
+              // Financial Section
+              (async () => {
+                sectionMetrics.financial.start = performance.now()
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: 'section-start',
+                  section: 'financial',
+                  title: locale === 'es' ? '💰 Análisis Financiero' : '💰 Financial Analysis',
+                  sectionNumber: 1,
+                  totalSections: 5
+                })}\n\n`))
+
+                // Use custom financial prompt from lead classification
+                let content = ''
+                for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, GROUNDING.financial, customPrompts.financial, TOKEN_LIMITS.financial, MODELS.financial)) {
+                  content += chunk
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'section-chunk', section: 'financial', content: chunk })}\n\n`))
+                }
+
+                sectionMetrics.financial.end = performance.now()
+                sectionMetrics.financial.tokens = content.length
+                sectionContents.financial = content
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'section-complete', section: 'financial', content })}\n\n`))
+                return content
+              })(),
+
+              // Loan Options Section
+              (async () => {
+                sectionMetrics.loanOptions.start = performance.now()
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: 'section-start',
+                  section: 'loanOptions',
+                  title: locale === 'es' ? '🏦 Opciones de Préstamo' : '🏦 Loan Options',
+                  sectionNumber: 2,
+                  totalSections: 5
+                })}\n\n`))
+
+                // Use custom loan options prompt from lead classification
+                let content = ''
+                for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, GROUNDING.loans, customPrompts.loanOptions, TOKEN_LIMITS.loans, MODELS.loanOptions)) {
+                  content += chunk
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'section-chunk', section: 'loanOptions', content: chunk })}\n\n`))
+                }
+
+                sectionMetrics.loanOptions.end = performance.now()
+                sectionMetrics.loanOptions.tokens = content.length
+                sectionContents.loanOptions = content
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'section-complete', section: 'loanOptions', content })}\n\n`))
+                return content
+              })(),
+
+              // Location Section
+              (async () => {
+                sectionMetrics.location.start = performance.now()
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: 'section-start',
+                  section: 'location',
+                  title: locale === 'es' ? '📍 Ubicación y Prioridades' : '📍 Location & Priorities',
+                  sectionNumber: 3,
+                  totalSections: 5
+                })}\n\n`))
+
+                // Use custom location prompt from lead classification
+                let content = ''
+                for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, GROUNDING.location, customPrompts.location, TOKEN_LIMITS.location, MODELS.location)) {
+                  content += chunk
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'section-chunk', section: 'location', content: chunk })}\n\n`))
+                }
+
+                sectionMetrics.location.end = performance.now()
+                sectionMetrics.location.tokens = content.length
+                sectionContents.location = content
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'section-complete', section: 'location', content })}\n\n`))
+                return content
+              })()
+            ])
+
+            // Process results
+            if (financialResult.status === 'fulfilled') totalChunks += sectionContents.financial.length
+            if (loanResult.status === 'fulfilled') totalChunks += sectionContents.loanOptions.length
+            if (locationResult.status === 'fulfilled') totalChunks += sectionContents.location.length
+
+            const overallEndTime = performance.now()
+            console.log(`📊 PARALLEL GENERATION COMPLETE:`, {
+              totalTime: `${((overallEndTime - overallStartTime) / 1000).toFixed(2)}s`,
+              financial: `${((sectionMetrics.financial.end - sectionMetrics.financial.start) / 1000).toFixed(2)}s (${sectionMetrics.financial.tokens} chars)`,
+              loans: `${((sectionMetrics.loanOptions.end - sectionMetrics.loanOptions.start) / 1000).toFixed(2)}s (${sectionMetrics.loanOptions.tokens} chars)`,
+              location: `${((sectionMetrics.location.end - sectionMetrics.location.start) / 1000).toFixed(2)}s (${sectionMetrics.location.tokens} chars)`,
+              speedup: 'Estimated 60% faster than sequential'
+            })
+
+          } else {
+            console.log('⏭️  SEQUENTIAL GENERATION (set GEMINI_ENABLE_PARALLEL_GENERATION=true for 60% speedup)')
+
+            // SECTION 1: Financial Analysis (SEQUENTIAL FALLBACK)
           try {
+            sectionMetrics.financial.start = performance.now()
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'section-start',
               section: 'financial',
@@ -120,106 +258,8 @@ export async function POST(request: NextRequest) {
               totalSections: 4
             })}\n\n`))
 
-            // Build comprehensive financial prompt with calculations
-            const income = fullPlanInput.userProfile.incomeDebt.annualIncome
-            const monthlyIncome = Math.round(income / 12)
-            const monthlyDebts = fullPlanInput.userProfile.incomeDebt.monthlyDebts
-            const creditScore = fullPlanInput.userProfile.incomeDebt.creditScore
-            const downPaymentPct = wizardData.downPaymentPercent || 3
-            const targetPrice = wizardData.targetPrice || Math.round(income * 3.5)
-
-            // Calculate key metrics
-            const currentDTI = Math.round((monthlyDebts / monthlyIncome) * 100)
-            const maxMonthlyPayment = Math.round(monthlyIncome * 0.43) // 43% DTI max
-            const recommendedMonthlyPayment = Math.round(monthlyIncome * 0.35) // 35% safer
-            const availableForHousing = maxMonthlyPayment - monthlyDebts
-
-            // Calculate for 3 price points
-            const pricePoints = [
-              targetPrice,
-              Math.round(targetPrice * 1.15),
-              Math.round(targetPrice * 1.3)
-            ]
-
-            const financialPrompt = locale === 'es'
-              ? `Eres un asesor financiero experto. Escribe análisis financiero completo (nivel tercer grado - palabras simples).
-
-SITUACIÓN ACTUAL DEL COMPRADOR:
-- Ingreso anual: $${income.toLocaleString()} ($${monthlyIncome.toLocaleString()}/mes)
-- Deudas mensuales: $${monthlyDebts.toLocaleString()}
-- DTI actual: ${currentDTI}% (excelente si <20%, bueno si <36%)
-- Puntaje de crédito: ${creditScore}
-- Enganche: ${downPaymentPct}%
-
-GENERA ESTE ANÁLISIS (máximo 250 palabras):
-
-## 💰 Análisis Financiero
-
-**Tu Situación Actual:**
-- Ganas $${monthlyIncome.toLocaleString()} cada mes
-- Pagas $${monthlyDebts.toLocaleString()} en deudas (${currentDTI}% de tu ingreso)
-- Disponible para casa: $${availableForHousing.toLocaleString()}/mes
-
-**Comparación de Precios:**
-
-| Precio Casa | Enganche (${downPaymentPct}%) | Pago Mensual* | Costos Cierre | Efectivo Necesario Total |
-|-------------|-------------------------------|---------------|---------------|--------------------------|
-| $${pricePoints[0].toLocaleString()} | $${Math.round(pricePoints[0] * downPaymentPct/100).toLocaleString()} | ~$X,XXX | ~$${Math.round(pricePoints[0] * 0.035).toLocaleString()} | ~$${Math.round(pricePoints[0] * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()} |
-| $${pricePoints[1].toLocaleString()} | $${Math.round(pricePoints[1] * downPaymentPct/100).toLocaleString()} | ~$X,XXX | ~$${Math.round(pricePoints[1] * 0.035).toLocaleString()} | ~$${Math.round(pricePoints[1] * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()} |
-| $${pricePoints[2].toLocaleString()} | $${Math.round(pricePoints[2] * downPaymentPct/100).toLocaleString()} | ~$X,XXX | ~$${Math.round(pricePoints[2] * 0.035).toLocaleString()} | ~$${Math.round(pricePoints[2] * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()} |
-
-*Incluye: préstamo + impuestos + seguro + PMI
-
-**Efectivo Total Necesario para Cerrar (precio $${targetPrice.toLocaleString()}):**
-- Enganche: $${Math.round(targetPrice * downPaymentPct/100).toLocaleString()}
-- Costos de cierre: $${Math.round(targetPrice * 0.035).toLocaleString()} (3-4%)
-- Depósitos/reservas: $${(3000).toLocaleString()}
-- TOTAL: $${Math.round(targetPrice * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()}
-
-**Recomendación:** [Basado en DTI y disponibilidad de efectivo]
-
-Usa palabras simples. Explica todo claramente.`
-              : `You are an expert financial advisor. Write comprehensive financial analysis (3rd grade level - simple words).
-
-BUYER'S CURRENT SITUATION:
-- Annual income: $${income.toLocaleString()} ($${monthlyIncome.toLocaleString()}/month)
-- Monthly debts: $${monthlyDebts.toLocaleString()}
-- Current DTI: ${currentDTI}% (excellent if <20%, good if <36%)
-- Credit score: ${creditScore}
-- Down payment: ${downPaymentPct}%
-
-GENERATE THIS ANALYSIS (maximum 250 words):
-
-## 💰 Financial Analysis
-
-**Your Current Situation:**
-- You earn $${monthlyIncome.toLocaleString()} each month
-- You pay $${monthlyDebts.toLocaleString()} in debts (${currentDTI}% of income)
-- Available for housing: $${availableForHousing.toLocaleString()}/month
-
-**Price Comparison:**
-
-| House Price | Down Payment (${downPaymentPct}%) | Monthly Payment* | Closing Costs | Total Cash Needed |
-|-------------|-----------------------------------|------------------|---------------|-------------------|
-| $${pricePoints[0].toLocaleString()} | $${Math.round(pricePoints[0] * downPaymentPct/100).toLocaleString()} | ~$X,XXX | ~$${Math.round(pricePoints[0] * 0.035).toLocaleString()} | ~$${Math.round(pricePoints[0] * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()} |
-| $${pricePoints[1].toLocaleString()} | $${Math.round(pricePoints[1] * downPaymentPct/100).toLocaleString()} | ~$X,XXX | ~$${Math.round(pricePoints[1] * 0.035).toLocaleString()} | ~$${Math.round(pricePoints[1] * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()} |
-| $${pricePoints[2].toLocaleString()} | $${Math.round(pricePoints[2] * downPaymentPct/100).toLocaleString()} | ~$X,XXX | ~$${Math.round(pricePoints[2] * 0.035).toLocaleString()} | ~$${Math.round(pricePoints[2] * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()} |
-
-*Includes: loan + taxes + insurance + PMI
-
-**Total Cash Needed to Close (for $${targetPrice.toLocaleString()} home):**
-- Down payment: $${Math.round(targetPrice * downPaymentPct/100).toLocaleString()}
-- Closing costs: $${Math.round(targetPrice * 0.035).toLocaleString()} (3-4%)
-- Escrow/reserves: $${(3000).toLocaleString()}
-- TOTAL CASH: $${Math.round(targetPrice * (downPaymentPct/100 + 0.035) + 3000).toLocaleString()}
-
-**Recommendation:** [Based on DTI and cash availability]
-
-Use simple words. Explain everything clearly.`
-
-            // Use Pro model for complex financial calculations, disable grounding
-            const FINANCIAL_TOKEN_LIMIT = 800 // ~250 words
-            for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, false, financialPrompt, FINANCIAL_TOKEN_LIMIT, MODELS.financial)) {
+            // Use custom financial prompt from lead classification (SEQUENTIAL MODE)
+            for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, GROUNDING.financial, customPrompts.financial, TOKEN_LIMITS.financial, MODELS.financial)) {
               totalChunks++
               sectionContents.financial += chunk
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -229,11 +269,16 @@ Use simple words. Explain everything clearly.`
               })}\n\n`))
             }
 
+            sectionMetrics.financial.end = performance.now()
+            sectionMetrics.financial.tokens = sectionContents.financial.length
+
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'section-complete',
               section: 'financial',
               content: sectionContents.financial
             })}\n\n`))
+
+            console.log(`⏱️  Financial: ${((sectionMetrics.financial.end - sectionMetrics.financial.start) / 1000).toFixed(2)}s`)
 
           } catch (error) {
             console.error('Error generating financial section:', error)
@@ -241,6 +286,7 @@ Use simple words. Explain everything clearly.`
 
           // SECTION 2: Loan Options
           try {
+            sectionMetrics.loanOptions.start = performance.now()
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'section-start',
               section: 'loanOptions',
@@ -249,123 +295,8 @@ Use simple words. Explain everything clearly.`
               totalSections: 4
             })}\n\n`))
 
-            const creditScore = fullPlanInput.userProfile.incomeDebt.creditScore
-            const downPaymentPct2 = wizardData.downPaymentPercent || 3
-            const targetPrice2 = wizardData.targetPrice || Math.round(fullPlanInput.userProfile.incomeDebt.annualIncome * 3.5)
-            const isFirstTime = fullPlanInput.preferences.buyerSpecialization?.isFirstTimeBuyer || false
-            const isMilitary = fullPlanInput.preferences.buyerSpecialization?.isMilitaryVeteran || false
-            const isUSDA = fullPlanInput.preferences.buyerSpecialization?.isUSDAEligible || false
-
-            // Calculate loan details for different programs
-            const downPayment3pct = Math.round(targetPrice2 * 0.03)
-            const downPayment3_5pct = Math.round(targetPrice2 * 0.035)
-            const downPayment5pct = Math.round(targetPrice2 * 0.05)
-            const downPayment10pct = Math.round(targetPrice2 * 0.10)
-            const downPayment20pct = Math.round(targetPrice2 * 0.20)
-
-            // Estimate PMI (rough calculation)
-            const loanAmount3pct = targetPrice2 - downPayment3pct
-            const pmi3pct = Math.round((loanAmount3pct * 0.005) / 12) // 0.5% annual PMI
-
-            const loanPrompt = locale === 'es'
-              ? `Eres un experto en préstamos hipotecarios en Texas. Escribe análisis completo de opciones de préstamo (nivel tercer grado).
-
-INFORMACIÓN DEL COMPRADOR:
-- Puntaje de crédito: ${creditScore}
-- Precio objetivo: $${targetPrice2.toLocaleString()}
-- Enganche planeado: ${downPaymentPct2}% ($${Math.round(targetPrice2 * downPaymentPct2/100).toLocaleString()})
-- Primera vez comprando: ${isFirstTime ? 'Sí' : 'No'}
-- Militar/Veterano: ${isMilitary ? 'Sí' : 'No'}
-
-GENERA ESTE ANÁLISIS (máximo 300 palabras):
-
-## 🏦 Opciones de Préstamo
-
-**Mejor Programa para Ti:** [Recomienda el mejor basado en perfil]
-
-**Comparación de Programas:**
-
-| Programa | Enganche Mínimo | PMI/MIP | Puntaje Crédito | Mejor Para |
-|----------|-----------------|---------|-----------------|------------|
-| Conventional 97 | 3% ($${downPayment3pct.toLocaleString()}) | ~$${pmi3pct.toLocaleString()}/mes | 620+ | Primer comprador, buen crédito |
-| FHA | 3.5% ($${downPayment3_5pct.toLocaleString()}) | ~$XXX/mes (permanente) | 580+ | Crédito más bajo |
-| VA Loan | 0% ($0) | No PMI | N/A | Militares/veteranos solamente |
-| Conventional 95 | 5% ($${downPayment5pct.toLocaleString()}) | ~$XXX/mes (menos) | 620+ | Más ahorro inicial |
-
-**Programas de Ayuda en Texas:**
-- **TSAHC (Texas State Affordable Housing):** Hasta $15,000 de ayuda para enganche
-- **Hometown Heroes:** 0.25% descuento en tasa para maestros, bomberos, policías, enfermeras, etc.
-- **My First Texas Home:** Préstamos con tasa baja para primeros compradores
-
-**Comparación de Enganche (casa de $${targetPrice2.toLocaleString()}):**
-
-| Enganche | Monto | Préstamo | PMI/Mes | Pago Total/Mes* |
-|----------|-------|----------|---------|-----------------|
-| 3% | $${downPayment3pct.toLocaleString()} | $${(targetPrice2-downPayment3pct).toLocaleString()} | ~$${pmi3pct.toLocaleString()} | ~$X,XXX |
-| 5% | $${downPayment5pct.toLocaleString()} | $${(targetPrice2-downPayment5pct).toLocaleString()} | ~$XXX | ~$X,XXX |
-| 10% | $${downPayment10pct.toLocaleString()} | $${(targetPrice2-downPayment10pct).toLocaleString()} | ~$XXX | ~$X,XXX |
-| 20% | $${downPayment20pct.toLocaleString()} | $${(targetPrice2-downPayment20pct).toLocaleString()} | $0 (sin PMI) | ~$X,XXX |
-
-*Estimado con tasa ~6.75%, incluye impuestos y seguro
-
-**Próximos Pasos:**
-1. Tomar curso de educación para compradores (8 horas, ~$75)
-2. Solicitar pre-aprobación con 3 prestamistas
-3. Aplicar a TSAHC si calificas
-4. Comparar tasas y programas
-
-Usa palabras simples. Explica beneficios de cada programa.`
-              : `You are a Texas mortgage loan expert. Write comprehensive loan options analysis (3rd grade level).
-
-BUYER INFORMATION:
-- Credit score: ${creditScore}
-- Target price: $${targetPrice2.toLocaleString()}
-- Planned down payment: ${downPaymentPct2}% ($${Math.round(targetPrice2 * downPaymentPct2/100).toLocaleString()})
-- First-time buyer: ${isFirstTime ? 'Yes' : 'No'}
-- Military/Veteran: ${isMilitary ? 'Yes' : 'No'}
-
-GENERATE THIS ANALYSIS (maximum 300 words):
-
-## 🏦 Loan Options
-
-**Best Program for You:** [Recommend best based on profile]
-
-**Program Comparison:**
-
-| Program | Min Down Payment | PMI/MIP | Credit Score | Best For |
-|---------|------------------|---------|--------------|----------|
-| Conventional 97 | 3% ($${downPayment3pct.toLocaleString()}) | ~$${pmi3pct.toLocaleString()}/month | 620+ | First-time, good credit |
-| FHA | 3.5% ($${downPayment3_5pct.toLocaleString()}) | ~$XXX/month (permanent) | 580+ | Lower credit |
-| VA Loan | 0% ($0) | No PMI | N/A | Military/veterans only |
-| Conventional 95 | 5% ($${downPayment5pct.toLocaleString()}) | ~$XXX/month (lower) | 620+ | More savings |
-
-**Texas Assistance Programs:**
-- **TSAHC (Texas State Affordable Housing):** Up to $15,000 down payment help
-- **Hometown Heroes:** 0.25% rate discount for teachers, firefighters, police, nurses, etc.
-- **My First Texas Home:** Low-rate loans for first-time buyers
-
-**Down Payment Comparison (for $${targetPrice2.toLocaleString()} home):**
-
-| Down Payment | Amount | Loan Size | PMI/Month | Total Payment/Month* |
-|--------------|--------|-----------|-----------|----------------------|
-| 3% | $${downPayment3pct.toLocaleString()} | $${(targetPrice2-downPayment3pct).toLocaleString()} | ~$${pmi3pct.toLocaleString()} | ~$X,XXX |
-| 5% | $${downPayment5pct.toLocaleString()} | $${(targetPrice2-downPayment5pct).toLocaleString()} | ~$XXX | ~$X,XXX |
-| 10% | $${downPayment10pct.toLocaleString()} | $${(targetPrice2-downPayment10pct).toLocaleString()} | ~$XXX | ~$X,XXX |
-| 20% | $${downPayment20pct.toLocaleString()} | $${(targetPrice2-downPayment20pct).toLocaleString()} | $0 (no PMI) | ~$X,XXX |
-
-*Estimated at ~6.75% rate, includes taxes and insurance
-
-**Next Steps:**
-1. Take homebuyer education course (8 hours, ~$75)
-2. Get pre-approved with 3 lenders
-3. Apply for TSAHC if you qualify
-4. Compare rates and programs
-
-Use simple words. Explain benefits of each program.`
-
-            // Use Flash model for faster program comparison, disable grounding
-            const LOAN_OPTIONS_TOKEN_LIMIT = 1000 // ~300 words
-            for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, false, loanPrompt, LOAN_OPTIONS_TOKEN_LIMIT, MODELS.loanOptions)) {
+            // Use custom loan options prompt from lead classification (SEQUENTIAL MODE)
+            for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, GROUNDING.loans, customPrompts.loanOptions, TOKEN_LIMITS.loans, MODELS.loanOptions)) {
               totalChunks++
               sectionContents.loanOptions += chunk
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -375,11 +306,16 @@ Use simple words. Explain benefits of each program.`
               })}\n\n`))
             }
 
+            sectionMetrics.loanOptions.end = performance.now()
+            sectionMetrics.loanOptions.tokens = sectionContents.loanOptions.length
+
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'section-complete',
               section: 'loanOptions',
               content: sectionContents.loanOptions
             })}\n\n`))
+
+            console.log(`⏱️  Loan Options: ${((sectionMetrics.loanOptions.end - sectionMetrics.loanOptions.start) / 1000).toFixed(2)}s`)
 
           } catch (error) {
             console.error('Error generating loan options section:', error)
@@ -387,6 +323,7 @@ Use simple words. Explain benefits of each program.`
 
           // SECTION 3: Location & Priorities
           try {
+            sectionMetrics.location.start = performance.now()
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'section-start',
               section: 'location',
@@ -395,135 +332,8 @@ Use simple words. Explain benefits of each program.`
               totalSections: 4
             })}\n\n`))
 
-            const city = fullPlanInput.userProfile.location.preferredCity || wizardData.city || 'the area'
-            const state = fullPlanInput.userProfile.location.preferredState || 'TX'
-            const zipCode = wizardData.zipCode || ''
-            const homeType = fullPlanInput.userProfile.location.homeType || 'house'
-            const targetPrice3 = wizardData.targetPrice || Math.round(fullPlanInput.userProfile.incomeDebt.annualIncome * 3.5)
-            const locationPriorities = wizardData.locationPriority || []
-
-            // Austin metro market data (hardcoded for common cities - can be enhanced with API later)
-            const marketData: Record<string, { median: number, alternatives: string[], taxRate: number }> = {
-              'Round Rock': { median: 475000, alternatives: ['Pflugerville', 'Hutto', 'Manor'], taxRate: 2.2 },
-              'Austin': { median: 550000, alternatives: ['Pflugerville', 'Round Rock', 'Buda'], taxRate: 2.1 },
-              'Pflugerville': { median: 375000, alternatives: ['Hutto', 'Manor', 'Round Rock'], taxRate: 2.3 },
-              'Cedar Park': { median: 485000, alternatives: ['Leander', 'Liberty Hill', 'Hutto'], taxRate: 2.2 },
-              'Leander': { median: 425000, alternatives: ['Liberty Hill', 'Georgetown', 'Cedar Park'], taxRate: 2.1 },
-              'Georgetown': { median: 450000, alternatives: ['Hutto', 'Leander', 'Round Rock'], taxRate: 2.3 },
-              'Hutto': { median: 340000, alternatives: ['Manor', 'Taylor', 'Pflugerville'], taxRate: 2.4 },
-              'Manor': { median: 320000, alternatives: ['Pflugerville', 'Hutto', 'Elgin'], taxRate: 2.3 }
-            }
-
-            const cityData = marketData[city] || { median: 400000, alternatives: ['surrounding areas'], taxRate: 2.2 }
-            const medianPrice = cityData.median
-            const alternatives = cityData.alternatives
-            const taxRate = cityData.taxRate
-
-            // Calculate monthly costs
-            const monthlyPropertyTax = Math.round((targetPrice3 * taxRate / 100) / 12)
-            const monthlyInsurance = Math.round((targetPrice3 * 0.005) / 12)
-            const monthlyMaintenance = Math.round((targetPrice3 * 0.01) / 12)
-            const monthlyUtilities = 250
-
-            const locationPrompt = locale === 'es'
-              ? `Eres un experto en bienes raíces del área de Austin, Texas. Escribe análisis completo del mercado local (nivel tercer grado).
-
-INFORMACIÓN DE UBICACIÓN:
-- Ciudad objetivo: ${city}, ${state} ${zipCode}
-- Presupuesto: $${targetPrice3.toLocaleString()}
-- Precio mediano en ${city}: $${medianPrice.toLocaleString()}
-- Diferencia: ${targetPrice3 < medianPrice ? `BAJO por $${(medianPrice - targetPrice3).toLocaleString()}` : `dentro del rango`}
-- Prioridades: ${locationPriorities.join(', ') || 'No especificado'}
-
-GENERA ESTE ANÁLISIS (máximo 350 palabras):
-
-## 📍 Ubicación y Realidad del Mercado
-
-**Realidad del Mercado en ${city}:**
-- Precio mediano actual: $${medianPrice.toLocaleString()}
-- Tu presupuesto: $${targetPrice3.toLocaleString()}
-- ${targetPrice3 < medianPrice ? `⚠️ Tu presupuesto está ${Math.round(((medianPrice - targetPrice3) / medianPrice) * 100)}% bajo el precio mediano` : `✅ Tu presupuesto está dentro del mercado`}
-
-**Qué Puedes Comprar por $${targetPrice3.toLocaleString()} en ${city}:**
-[Describe tipo de propiedades, tamaño, condición, competencia esperada]
-
-**Alternativas con Mejor Valor:**
-
-| Ciudad | Precio Mediano | Diferencia | Tiempo a Austin | Ventajas |
-|--------|----------------|------------|-----------------|----------|
-| ${alternatives[0]} | $XXX,XXX | -X% | XX min | [Ventajas] |
-| ${alternatives[1]} | $XXX,XXX | -X% | XX min | [Ventajas] |
-| ${alternatives[2]} | $XXX,XXX | -X% | XX min | [Ventajas] |
-
-**Vecindarios Recomendados en ${city}:**
-${locationPriorities.includes('schools') ? '[Enfoque en buenas escuelas]' : ''}
-${locationPriorities.includes('commute') ? '[Enfoque en commute corto]' : ''}
-${locationPriorities.includes('safety') ? '[Enfoque en seguridad]' : ''}
-[Lista 2-3 vecindarios con calificación de escuelas si relevante]
-
-**Costos Mensuales MÁS ALLÁ del Pago de Hipoteca:**
-- Impuestos de propiedad: ~$${monthlyPropertyTax.toLocaleString()}/mes (${taxRate}% anual)
-- Seguro de casa: ~$${monthlyInsurance.toLocaleString()}/mes
-- HOA (si aplica): $50-300/mes
-- Servicios públicos: ~$${monthlyUtilities}/mes
-- Mantenimiento: ~$${monthlyMaintenance.toLocaleString()}/mes (1% del valor)
-- **TOTAL EXTRA:** ~$${(monthlyPropertyTax + monthlyInsurance + monthlyMaintenance + monthlyUtilities).toLocaleString()}-${(monthlyPropertyTax + monthlyInsurance + monthlyMaintenance + monthlyUtilities + 300).toLocaleString()}/mes
-
-**Consejo de Mercado:**
-[Incluye: competencia (múltiples ofertas?), tiempo en mercado, mejor temporada para comprar, estrategias]
-
-Usa palabras simples. Sé honesto sobre el mercado.`
-              : `You are an Austin, Texas area real estate expert. Write comprehensive local market analysis (3rd grade level).
-
-LOCATION INFORMATION:
-- Target city: ${city}, ${state} ${zipCode}
-- Budget: $${targetPrice3.toLocaleString()}
-- Median price in ${city}: $${medianPrice.toLocaleString()}
-- Gap: ${targetPrice3 < medianPrice ? `BELOW by $${(medianPrice - targetPrice3).toLocaleString()}` : `within range`}
-- Priorities: ${locationPriorities.join(', ') || 'Not specified'}
-
-GENERATE THIS ANALYSIS (maximum 350 words):
-
-## 📍 Location & Market Reality
-
-**Market Reality in ${city}:**
-- Current median price: $${medianPrice.toLocaleString()}
-- Your budget: $${targetPrice3.toLocaleString()}
-- ${targetPrice3 < medianPrice ? `⚠️ Your budget is ${Math.round(((medianPrice - targetPrice3) / medianPrice) * 100)}% below median` : `✅ Your budget is within market range`}
-
-**What You Can Buy for $${targetPrice3.toLocaleString()} in ${city}:**
-[Describe property types, size, condition, expected competition]
-
-**Better Value Alternatives:**
-
-| City | Median Price | Difference | Time to Austin | Advantages |
-|------|--------------|------------|----------------|------------|
-| ${alternatives[0]} | $XXX,XXX | -X% | XX min | [Benefits] |
-| ${alternatives[1]} | $XXX,XXX | -X% | XX min | [Benefits] |
-| ${alternatives[2]} | $XXX,XXX | -X% | XX min | [Benefits] |
-
-**Recommended Neighborhoods in ${city}:**
-${locationPriorities.includes('schools') ? '[Focus on good schools]' : ''}
-${locationPriorities.includes('commute') ? '[Focus on short commute]' : ''}
-${locationPriorities.includes('safety') ? '[Focus on safety]' : ''}
-[List 2-3 neighborhoods with school ratings if relevant]
-
-**Monthly Costs BEYOND Mortgage Payment:**
-- Property taxes: ~$${monthlyPropertyTax.toLocaleString()}/month (${taxRate}% annual)
-- Home insurance: ~$${monthlyInsurance.toLocaleString()}/month
-- HOA (if applicable): $50-300/month
-- Utilities: ~$${monthlyUtilities}/month
-- Maintenance: ~$${monthlyMaintenance.toLocaleString()}/month (1% of value)
-- **TOTAL EXTRA:** ~$${(monthlyPropertyTax + monthlyInsurance + monthlyMaintenance + monthlyUtilities).toLocaleString()}-${(monthlyPropertyTax + monthlyInsurance + monthlyMaintenance + monthlyUtilities + 300).toLocaleString()}/month
-
-**Market Advice:**
-[Include: competition (multiple offers?), days on market, best season to buy, strategies]
-
-Use simple words. Be honest about the market.`
-
-            // Use Flash model for faster market data lookup, disable grounding
-            const LOCATION_TOKEN_LIMIT = 1200 // ~350 words
-            for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, false, locationPrompt, LOCATION_TOKEN_LIMIT, MODELS.location)) {
+            // Use custom location prompt from lead classification (SEQUENTIAL MODE)
+            for await (const chunk of geminiClient.generateMarkdownAnalysisStream(fullPlanInput, GROUNDING.location, customPrompts.location, TOKEN_LIMITS.location, MODELS.location)) {
               totalChunks++
               sectionContents.location += chunk
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -533,23 +343,195 @@ Use simple words. Be honest about the market.`
               })}\n\n`))
             }
 
+            sectionMetrics.location.end = performance.now()
+            sectionMetrics.location.tokens = sectionContents.location.length
+
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'section-complete',
               section: 'location',
               content: sectionContents.location
             })}\n\n`))
 
+            console.log(`⏱️  Location: ${((sectionMetrics.location.end - sectionMetrics.location.start) / 1000).toFixed(2)}s`)
+
           } catch (error) {
             console.error('Error generating location section:', error)
           }
 
-          // SECTION 4: Disclaimer (Static - No AI needed)
+          // Log sequential performance
+          const overallEndTime = performance.now()
+          console.log(`📊 SEQUENTIAL GENERATION COMPLETE:`, {
+            totalTime: `${((overallEndTime - overallStartTime) / 1000).toFixed(2)}s`,
+            financial: `${((sectionMetrics.financial.end - sectionMetrics.financial.start) / 1000).toFixed(2)}s`,
+            loans: `${((sectionMetrics.loanOptions.end - sectionMetrics.loanOptions.start) / 1000).toFixed(2)}s`,
+            location: `${((sectionMetrics.location.end - sectionMetrics.location.start) / 1000).toFixed(2)}s`
+          })
+          } // End sequential else block
+
+          // SECTION 4: Down Payment Assistance & Grants (Location-aware)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'section-start',
+            section: 'grants',
+            title: locale === 'es' ? '💰 Ayuda para Enganche' : '💰 Down Payment Assistance',
+            sectionNumber: 4,
+            totalSections: 5
+          })}\n\n`))
+
+          const city = fullPlanInput.userProfile.location.preferredCity || wizardData.city || 'Austin'
+          const targetPrice = wizardData.targetPrice || Math.round(fullPlanInput.userProfile.incomeDebt.annualIncome * 3.5)
+          const income = fullPlanInput.userProfile.incomeDebt.annualIncome
+          const isFirstTime = fullPlanInput.preferences.buyerSpecialization?.isFirstTimeBuyer || false
+          const isMilitary = fullPlanInput.preferences.buyerSpecialization?.isMilitaryVeteran || false
+          const creditScore = fullPlanInput.userProfile.incomeDebt.creditScore
+
+          const downPaymentNeeded = Math.round(targetPrice * 0.03)
+          const withGrantAssistance = Math.round(downPaymentNeeded - 10000)
+          const monthlySavings = Math.round((10000 * 0.07) / 12)
+
+          const grantsText = locale === 'es'
+            ? `## 💰 Ayuda para Enganche
+
+Tu casa de $${targetPrice.toLocaleString()} necesita $${downPaymentNeeded.toLocaleString()} de enganche al 3%. Pero hay $10,000-$15,000 disponibles en ayuda que NADIE usa.
+
+## Tu Dinero Gratis
+
+| Programa | Obtienes | Tiempo | Tu Acción |
+|----------|----------|--------|-----------|
+| **TSAHC My First Texas Home** | $10,000-$15,000 | 3-4 semanas | Curso 8 horas → Aplicar |
+| **Texas Hometown Heroes** | $7,500 + 0.25% tasa | 2-3 semanas | Verificar profesión → Aplicar |
+| **Austin AHFC** | $15,000-$80,000 | 4-6 semanas | Ingreso <$95k → Curso → Aplicar |
+| **HUD Good Neighbor** | 50% descuento | Varía | Maestro/policía/bombero en zona |
+
+## Ejemplo Ilustrativo
+
+${isFirstTime ? `Como comprador por primera vez con crédito ${creditScore}, puede calificar para programas como TSAHC. La elegibilidad varía según múltiples factores.` : ''}
+
+**Escenario de Ejemplo:**
+- Enganche requerido (3%): $${downPaymentNeeded.toLocaleString()}
+- Con asistencia de $10,000: $${withGrantAssistance.toLocaleString()}
+- Posible ahorro mensual estimado: ~$${monthlySavings}/mes
+
+**Importante:** Estas son estimaciones ilustrativas. Los montos reales, elegibilidad y términos varían. Consulte con cada programa directamente.
+
+${isMilitary ? `
+## Militar/Veterano = Dinero Extra
+
+- VA Loan: 0% enganche (¡no necesitas ayuda!)
+- Operation Homefront: $3,000-$5,000 adicional
+- Homes for Heroes: Descuentos en cierre
+` : ''}
+
+${isFirstTime ? `
+## Tu Plan (Primer Comprador)
+
+**Semana 1:** Curso online 8 horas ($75) - [NeighborWorks](https://www.neighborworks.org)
+**Semana 2:** Pre-aprobación con 2-3 prestamistas
+**Semana 3:** Aplicar TSAHC + programas ${city}
+**Semana 4-6:** Aprobación, buscar casas, ofertas
+
+Total de tu bolsillo: $${withGrantAssistance.toLocaleString()} en vez de $${downPaymentNeeded.toLocaleString()}
+` : `
+## Rápido - 3 Pasos
+
+1. Curso comprador (8hr online, $75) → Certificado
+2. Pre-aprobación → Muestra poder de compra
+3. Aplicar programas → Dinero en 2-4 semanas
+`}
+
+## Pasos Siguientes Recomendados
+
+1. **Investigue directamente** - Visite los sitios web de cada programa para requisitos actuales
+2. **Consulte con profesionales** - Hable con prestamistas hipotecarios sobre compatibilidad de programas
+3. **Tome el curso requerido** - La mayoría requiere educación para compradores de vivienda
+4. **Aplique temprano** - Muchos programas tienen fondos limitados
+
+**Descargo de Responsabilidad:** Los requisitos de elegibilidad, montos de asistencia y disponibilidad de fondos cambian frecuentemente. Esta información puede estar desactualizada. Siempre verifique directamente con cada programa antes de tomar decisiones financieras.
+
+**Consulta Profesional Requerida:** Para orientación específica sobre cuáles programas pueden aplicar a su situación, consulte con un prestamista hipotecario licenciado y un agente de bienes raíces con licencia TREC.`
+
+            : `## 💰 Down Payment Assistance Programs
+
+**Educational Purpose:** This information about assistance programs is for educational purposes only. Consult directly with each program and a licensed financial advisor to verify current eligibility and terms.
+
+For a $${targetPrice.toLocaleString()} home, a 3% down payment requires approximately $${downPaymentNeeded.toLocaleString()}. Several assistance programs exist in Texas that may help qualified buyers.
+
+## Available Texas Programs
+
+| Program | You Get | Timeline | Your Action |
+|---------|---------|----------|-------------|
+| **TSAHC My First Texas Home** | $10,000-$15,000 | 3-4 weeks | 8hr course → Apply |
+| **Texas Hometown Heroes** | $7,500 + 0.25% rate | 2-3 weeks | Verify profession → Apply |
+| **Austin AHFC** | $15,000-$80,000 | 4-6 weeks | Income <$95k → Course → Apply |
+| **HUD Good Neighbor** | 50% off price | Varies | Teacher/police/fire in zone |
+
+## Illustrative Example
+
+${isFirstTime ? `As a first-time buyer with ${creditScore} credit, you may qualify for programs like TSAHC. Eligibility varies based on multiple factors.` : ''}
+
+**Example Scenario:**
+- Required down payment (3%): $${downPaymentNeeded.toLocaleString()}
+- With $10,000 assistance: $${withGrantAssistance.toLocaleString()}
+- Potential estimated monthly savings: ~$${monthlySavings}/month
+
+**Important:** These are illustrative estimates. Actual amounts, eligibility, and terms vary. Consult with each program directly.
+
+${isMilitary ? `
+## Military/Veteran = Extra Cash
+
+- VA Loan: 0% down (you don't need help!)
+- Operation Homefront: $3,000-$5,000 extra
+- Homes for Heroes: Closing cost discounts
+` : ''}
+
+${isFirstTime ? `
+## Your Plan (First-Timer)
+
+**Week 1:** Online course 8 hours ($75) - [NeighborWorks](https://www.neighborworks.org)
+**Week 2:** Pre-approval with 2-3 lenders
+**Week 3:** Apply TSAHC + ${city} programs
+**Week 4-6:** Approval, house hunting, offers
+
+Out of YOUR pocket: $${withGrantAssistance.toLocaleString()} instead of $${downPaymentNeeded.toLocaleString()}
+` : `
+## Quick - 3 Steps
+
+1. Buyer course (8hr online, $75) → Certificate
+2. Pre-approval → Shows buying power
+3. Apply programs → Money in 2-4 weeks
+`}
+
+## Recommended Next Steps
+
+1. **Research directly** - Visit each program's website for current requirements
+2. **Consult with professionals** - Speak with mortgage lenders about program compatibility
+3. **Take required course** - Most require homebuyer education
+4. **Apply early** - Many programs have limited funds
+
+**Disclaimer:** Eligibility requirements, assistance amounts, and fund availability change frequently. This information may be outdated. Always verify directly with each program before making financial decisions.
+
+**Professional Consultation Required:** For specific guidance on which programs may apply to your situation, consult with a licensed mortgage lender and a TREC-licensed real estate agent.`
+
+          sectionContents.grants = grantsText
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'section-chunk',
+            section: 'grants',
+            content: grantsText
+          })}\n\n`))
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'section-complete',
+            section: 'grants',
+            content: grantsText
+          })}\n\n`))
+
+          // SECTION 5: Disclaimer (Static - No AI needed)
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: 'section-start',
             section: 'disclaimer',
             title: locale === 'es' ? '⚠️ Avisos Importantes' : '⚠️ Important Disclaimers',
-            sectionNumber: 4,
-            totalSections: 4
+            sectionNumber: 5,
+            totalSections: 5
           })}\n\n`))
 
           const disclaimerText = locale === 'es'

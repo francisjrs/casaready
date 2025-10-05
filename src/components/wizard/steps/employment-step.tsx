@@ -69,6 +69,13 @@ export function EmploymentStep({ onNext }: EmploymentStepProps) {
       considerations: t('wizard.steps.employment.types.w2.considerations')
     },
     {
+      value: 'itin',
+      label: t('wizard.steps.employment.types.itin.label'),
+      description: t('wizard.steps.employment.types.itin.description'),
+      icon: '🪪',
+      considerations: t('wizard.steps.employment.types.itin.considerations')
+    },
+    {
       value: '1099',
       label: t('wizard.steps.employment.types.1099.label'),
       description: t('wizard.steps.employment.types.1099.description'),
@@ -206,6 +213,11 @@ export function EmploymentStep({ onNext }: EmploymentStepProps) {
                 {formData.employmentType === 'w2' && (
                   <p>
                     {t('wizard.steps.employment.advice.w2')}
+                  </p>
+                )}
+                {formData.employmentType === 'itin' && (
+                  <p>
+                    {t('wizard.steps.employment.advice.itin')}
                   </p>
                 )}
                 {formData.employmentType === '1099' && (

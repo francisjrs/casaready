@@ -366,6 +366,11 @@ export const translations: Record<Locale, Translation> = {
               description: 'Traditional employment with pay stubs',
               considerations: 'Standard documentation required'
             },
+            itin: {
+              label: 'ITIN Taxpayer',
+              description: 'Filing taxes with Individual Taxpayer Identification Number',
+              considerations: 'Special ITIN loan programs available'
+            },
             '1099': {
               label: '1099 Contractor',
               description: 'Independent contractor or freelancer',
@@ -394,6 +399,7 @@ export const translations: Record<Locale, Translation> = {
           },
           advice: {
             w2: 'W-2 employees typically have the easiest approval process with recent pay stubs and tax returns.',
+            itin: 'ITIN borrowers qualify for specialized portfolio loans (10-20% down). You\'ll need ITIN card, 2-year tax returns, passport, and bank statements. Texas has excellent ITIN lenders who understand your situation.',
             '1099': '1099 contractors may need to show 2 years of stable income and higher cash reserves.',
             selfEmployed: 'Self-employed borrowers need business tax returns and may benefit from bank statement loans.',
             mixed: 'Mixed income requires documentation for all sources and may need averaged income calculations.',
@@ -1152,6 +1158,11 @@ export const translations: Record<Locale, Translation> = {
               description: 'Empleo tradicional con talones de pago',
               considerations: 'Documentación estándar requerida'
             },
+            itin: {
+              label: 'Contribuyente ITIN',
+              description: 'Presentando impuestos con Número de Identificación Personal del Contribuyente',
+              considerations: 'Programas de préstamos ITIN especiales disponibles'
+            },
             '1099': {
               label: 'Contratista 1099',
               description: 'Contratista independiente o trabajador freelance',
@@ -1180,6 +1191,7 @@ export const translations: Record<Locale, Translation> = {
           },
           advice: {
             w2: 'Los empleados W-2 típicamente tienen el proceso de aprobación más fácil con talones de pago recientes y declaraciones de impuestos.',
+            itin: 'Los prestatarios ITIN califican para préstamos portfolio especializados (10-20% de enganche). Necesitarás tarjeta ITIN, declaraciones de impuestos de 2 años, pasaporte y estados de cuenta bancarios. Texas tiene excelentes prestamistas ITIN que entienden tu situación.',
             '1099': 'Los contratistas 1099 pueden necesitar mostrar 2 años de ingresos estables y mayores reservas de efectivo.',
             selfEmployed: 'Los prestatarios autónomos necesitan declaraciones de impuestos del negocio y pueden beneficiarse de préstamos basados en estados de cuenta bancarios.',
             mixed: 'Los ingresos mixtos requieren documentación para todas las fuentes y pueden necesitar cálculos de ingresos promediados.',

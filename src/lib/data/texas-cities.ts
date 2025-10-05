@@ -10,6 +10,10 @@ export interface TexasCity {
   population: number
   zipCodes: string[]
   isMetro: boolean
+  coordinates?: {
+    lat: number
+    lng: number
+  }
 }
 
 export const TEXAS_CITIES: TexasCity[] = [
@@ -72,6 +76,20 @@ export const TEXAS_CITIES: TexasCity[] = [
   { name: "Buda", county: "Hays", region: "Austin", population: 17854, zipCodes: ["78610"], isMetro: true },
   { name: "Kyle", county: "Hays", region: "Austin", population: 45697, zipCodes: ["78640"], isMetro: true },
   { name: "San Marcos", county: "Hays", region: "Austin", population: 67553, zipCodes: ["78666"], isMetro: true },
+  { name: "Hutto", county: "Williamson", region: "Austin", population: 34916, zipCodes: ["78634"], isMetro: true },
+  { name: "Manor", county: "Travis", region: "Austin", population: 16592, zipCodes: ["78653"], isMetro: true },
+  { name: "Taylor", county: "Williamson", region: "Austin", population: 17291, zipCodes: ["76574"], isMetro: false },
+  { name: "Jarrell", county: "Williamson", region: "Austin", population: 1896, zipCodes: ["76537"], isMetro: false },
+  { name: "Liberty Hill", county: "Williamson", region: "Austin", population: 4269, zipCodes: ["78642"], isMetro: false },
+  { name: "Cedar Creek", county: "Bastrop", region: "Austin", population: 3900, zipCodes: ["78612"], isMetro: false },
+  { name: "Elgin", county: "Bastrop", region: "Austin", population: 10231, zipCodes: ["78621"], isMetro: false },
+  { name: "Bastrop", county: "Bastrop", region: "Austin", population: 9688, zipCodes: ["78602"], isMetro: false },
+  { name: "Lockhart", county: "Caldwell", region: "Austin", population: 14379, zipCodes: ["78644"], isMetro: false },
+  { name: "Marble Falls", county: "Burnet", region: "Austin", population: 7154, zipCodes: ["78654"], isMetro: false },
+  { name: "Wimberley", county: "Hays", region: "Austin", population: 3156, zipCodes: ["78676"], isMetro: false },
+  { name: "Bertram", county: "Burnet", region: "Austin", population: 1495, zipCodes: ["78605"], isMetro: false },
+  { name: "Granger", county: "Williamson", region: "Austin", population: 1644, zipCodes: ["76530"], isMetro: false },
+  { name: "Coupland", county: "Williamson", region: "Austin", population: 320, zipCodes: ["78615"], isMetro: false },
 
   // San Antonio Metropolitan Area
   { name: "San Antonio", county: "Bexar", region: "San Antonio", population: 1547253, zipCodes: ["78201", "78202", "78203", "78204", "78205", "78207", "78208", "78209", "78210", "78211", "78212", "78213", "78214", "78215", "78216", "78217", "78218", "78219", "78220", "78221", "78222", "78223", "78224", "78225", "78226", "78227", "78228", "78229", "78230", "78231", "78232", "78233", "78234", "78235", "78236", "78237", "78238", "78239", "78240", "78242", "78244", "78245", "78247", "78248", "78249", "78250", "78251", "78252", "78253", "78254", "78255", "78256", "78257", "78258", "78259", "78260", "78261", "78263", "78264", "78265", "78266", "78268", "78269", "78270", "78278", "78279", "78280", "78283", "78284", "78285", "78288", "78289", "78291", "78292", "78293", "78294", "78295", "78296", "78297", "78298", "78299"], isMetro: true },
@@ -242,4 +260,306 @@ export function isValidTexasCity(cityName: string): boolean {
   return TEXAS_CITIES.some(city =>
     city.name.toLowerCase() === cityName.toLowerCase()
   )
+}
+
+/**
+ * Levenshtein distance calculation for fuzzy matching
+ * Measures the minimum number of edits (insertions, deletions, substitutions) needed
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix: number[][] = []
+
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i]
+  }
+
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j
+  }
+
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        )
+      }
+    }
+  }
+
+  return matrix[str2.length][str1.length]
+}
+
+/**
+ * Enhanced search result with scoring metadata
+ */
+export interface TexasCitySearchResult {
+  city: TexasCity
+  score: number
+  matchType: 'exact' | 'prefix' | 'contains' | 'fuzzy' | 'county' | 'census' | 'default'
+  isCensusData?: boolean
+}
+
+/**
+ * Enhanced search with fuzzy matching and smart ranking
+ * Handles typos and provides better relevance scoring
+ */
+export function searchTexasCitiesEnhanced(
+  query: string,
+  limit: number = 10
+): TexasCitySearchResult[] {
+  if (!query || query.length < 2) {
+    return TEXAS_CITIES
+      .filter(city => city.isMetro)
+      .slice(0, limit)
+      .map(city => ({
+        city,
+        score: 0,
+        matchType: 'default' as const
+      }))
+  }
+
+  const searchTerm = query.toLowerCase().trim()
+  const results: TexasCitySearchResult[] = []
+
+  for (const city of TEXAS_CITIES) {
+    const cityName = city.name.toLowerCase()
+    const county = city.county.toLowerCase()
+
+    let score = 0
+    let matchType: TexasCitySearchResult['matchType'] = 'default'
+
+    // 1. Exact match (highest priority)
+    if (cityName === searchTerm) {
+      score = 1000
+      matchType = 'exact'
+    }
+    // 2. Starts with (high priority)
+    else if (cityName.startsWith(searchTerm)) {
+      score = 500 + (100 - searchTerm.length) // Shorter query = better match
+      matchType = 'prefix'
+    }
+    // 3. Contains (medium priority)
+    else if (cityName.includes(searchTerm)) {
+      score = 250
+      matchType = 'contains'
+    }
+    // 4. Fuzzy match (typo tolerance)
+    else {
+      const distance = levenshteinDistance(searchTerm, cityName)
+      const maxDistance = Math.floor(searchTerm.length / 3) // Allow 1 typo per 3 chars
+
+      if (distance <= maxDistance && distance <= 2) { // Max 2 typos
+        score = 200 - (distance * 50) // Fewer errors = higher score
+        matchType = 'fuzzy'
+      }
+    }
+
+    // 5. County match (alternative)
+    if (county.includes(searchTerm) && score < 100) {
+      score = 150
+      matchType = 'county'
+    }
+
+    // Boost score based on city attributes
+    if (score > 0) {
+      // Metro status boost
+      if (city.isMetro) score += 50
+
+      // Population boost (logarithmic scale to avoid huge cities dominating)
+      if (city.population > 0) {
+        score += Math.log10(city.population) * 10
+      }
+
+      results.push({
+        city,
+        score,
+        matchType
+      })
+    }
+  }
+
+  // Sort by score (highest first)
+  return results
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+}
+
+/**
+ * Hybrid search: Static database first, then Census API for missing cities
+ * This allows finding ANY Texas city, not just the curated list
+ */
+export async function searchTexasCitiesHybrid(
+  query: string,
+  limit: number = 10
+): Promise<TexasCitySearchResult[]> {
+  // Step 1: Search static database first (fast)
+  const staticResults = searchTexasCitiesEnhanced(query, limit)
+
+  // If we have good results, return immediately
+  if (staticResults.length >= 3) {
+    return staticResults
+  }
+
+  // Step 2: Search Census API for missing cities (slower but comprehensive)
+  try {
+    const censusResults = await searchCensusGeocoder(query)
+
+    // Merge static + census results
+    const mergedResults = [
+      ...staticResults,
+      ...censusResults.map(census => ({
+        city: census,
+        score: 100, // Lower than exact matches but higher than nothing
+        matchType: 'census' as const,
+        isCensusData: true
+      }))
+    ]
+
+    // Remove duplicates (prefer static over census)
+    const uniqueResults = mergedResults.filter((result, index, self) =>
+      index === self.findIndex(r =>
+        r.city.name.toLowerCase() === result.city.name.toLowerCase() &&
+        r.city.county.toLowerCase() === result.city.county.toLowerCase()
+      )
+    )
+
+    return uniqueResults
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+  } catch (error) {
+    console.warn('Census API search failed, using static results only:', error)
+    return staticResults
+  }
+}
+
+/**
+ * Search Census geocoding API for Texas cities
+ * Uses the existing /api/geocoding endpoint
+ */
+async function searchCensusGeocoder(cityName: string): Promise<TexasCity[]> {
+  try {
+    const response = await fetch(
+      `/api/geocoding?address=${encodeURIComponent(`${cityName}, Texas`)}`
+    )
+
+    if (!response.ok) {
+      throw new Error(`Geocoding failed: ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (data.result?.addressMatches?.length > 0) {
+      return data.result.addressMatches
+        .filter((match: any) =>
+          match.addressComponents?.state === 'TX' ||
+          match.addressComponents?.state === 'Texas'
+        )
+        .slice(0, 5) // Limit to top 5 Census results
+        .map((match: any) => convertCensusToCityObject(match))
+    }
+
+    return []
+  } catch (error) {
+    console.warn('Census geocoder search failed:', error)
+    return []
+  }
+}
+
+/**
+ * Determine Texas region from county name
+ * Helps categorize Census-sourced cities
+ */
+function determineRegionFromCounty(county: string): string {
+  const regionMap: Record<string, string> = {
+    // Greater Houston
+    'Harris': 'Greater Houston',
+    'Fort Bend': 'Greater Houston',
+    'Montgomery': 'Greater Houston',
+    'Brazoria': 'Greater Houston',
+    'Galveston': 'Greater Houston',
+
+    // Dallas-Fort Worth
+    'Dallas': 'Dallas-Fort Worth',
+    'Tarrant': 'Dallas-Fort Worth',
+    'Collin': 'Dallas-Fort Worth',
+    'Denton': 'Dallas-Fort Worth',
+    'Rockwall': 'Dallas-Fort Worth',
+    'Kaufman': 'Dallas-Fort Worth',
+    'Ellis': 'Dallas-Fort Worth',
+    'Johnson': 'Dallas-Fort Worth',
+    'Parker': 'Dallas-Fort Worth',
+    'Hood': 'Dallas-Fort Worth',
+
+    // Austin
+    'Travis': 'Austin',
+    'Williamson': 'Austin',
+    'Hays': 'Austin',
+    'Bastrop': 'Austin',
+    'Caldwell': 'Austin',
+
+    // San Antonio
+    'Bexar': 'San Antonio',
+    'Comal': 'San Antonio',
+    'Guadalupe': 'San Antonio',
+    'Kendall': 'San Antonio',
+
+    // Other regions
+    'El Paso': 'West Texas',
+    'Lubbock': 'West Texas',
+    'Midland': 'West Texas',
+    'Ector': 'West Texas',
+    'Taylor': 'West Texas',
+    'Tom Green': 'West Texas',
+    'Potter': 'Panhandle',
+    'Randall': 'Panhandle',
+    'Smith': 'East Texas',
+    'Gregg': 'East Texas',
+    'Harrison': 'East Texas',
+    'Angelina': 'East Texas',
+    'Nacogdoches': 'East Texas',
+    'Jefferson': 'East Texas',
+    'Cameron': 'South Texas',
+    'Hidalgo': 'South Texas',
+    'Webb': 'South Texas',
+    'Nueces': 'South Texas',
+    'McLennan': 'Central Texas',
+    'Bell': 'Central Texas',
+    'Brazos': 'Central Texas'
+  }
+
+  return regionMap[county] || 'Texas'
+}
+
+/**
+ * Convert Census geocoding result to TexasCity format
+ */
+function convertCensusToCityObject(censusMatch: any): TexasCity {
+  const components = censusMatch.addressComponents || {}
+  const coords = censusMatch.coordinates || {}
+
+  // Extract city name (remove state suffix if present)
+  let cityName = components.city || components.place || 'Unknown'
+  cityName = cityName.replace(/, TX$/, '').replace(/, Texas$/, '').trim()
+
+  // Extract county (remove "County" suffix)
+  let countyName = components.county || 'Unknown'
+  countyName = countyName.replace(/ County$/, '').trim()
+
+  return {
+    name: cityName,
+    county: countyName,
+    region: determineRegionFromCounty(countyName),
+    population: 0, // Unknown from geocoder
+    zipCodes: components.zip ? [components.zip] : [],
+    isMetro: false, // Conservative default for Census-sourced cities
+    coordinates: coords.x && coords.y ? {
+      lat: parseFloat(coords.y),
+      lng: parseFloat(coords.x)
+    } : undefined
+  }
 }
