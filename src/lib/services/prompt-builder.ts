@@ -113,7 +113,7 @@ const CTA_COMPONENTS = {
     es: (city: string) => `En ${city}, casas en tu rango de precio se venden en promedio 8-12 días. Vamos a posicionarte para ganar.`
   },
   socialProof: {
-    en: 'I've helped 200+ Austin-area families find their homes',
+    en: "I've helped 200+ Austin-area families find their homes",
     es: 'He ayudado a más de 200 familias en el área de Austin a encontrar sus hogares'
   }
 }
