@@ -330,7 +330,7 @@ export function SmartLocationForm({
           {/* Loading indicator */}
           {isZipLoading && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+              <Loader2 className="w-5 h-5 text-brand-500 animate-spin" />
             </div>
           )}
 

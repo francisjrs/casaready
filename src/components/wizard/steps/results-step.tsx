@@ -11,6 +11,14 @@ import { useWizard, formatCurrency } from '@/lib/services'
 import { useLanguage } from '@/contexts/language-context'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+import remarkSmartypants from 'remark-smartypants'
+import remarkEmoji from 'remark-emoji'
+import rehypeSlug from 'rehype-slug'
+import rehypeAutolinkHeadings from 'rehype-autolink-headings'
+import rehypeExternalLinks from 'rehype-external-links'
+import { AnimatedMetricCard } from '../animated-metric-card'
+import { SocialProofStats } from '@/components/trust/trust-signals'
 
 interface ResultsStepProps {
   // No longer need results prop since we get it from wizard context
@@ -111,36 +119,57 @@ export function ResultsStep({}: ResultsStepProps) {
         </p>
       </div>
 
+      {/* Social Proof Stats - Build credibility */}
+      <SocialProofStats variant="grid" className="my-8" />
+
       {/* AI-Generated Report */}
       {reportData.reportContent && (
         <div className="space-y-6">
           <div className="prose prose-sm max-w-none">
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={[remarkGfm, remarkBreaks, remarkSmartypants, remarkEmoji]}
+              rehypePlugins={[
+                rehypeSlug,
+                [rehypeAutolinkHeadings, { behavior: 'wrap' }],
+                [rehypeExternalLinks, { target: '_blank', rel: ['noopener', 'noreferrer'] }]
+              ]}
               components={{
                 h2: ({children}) => (
-                  <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm mb-6">
-                    <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight flex items-start gap-3">
+                  <div className="group bg-gradient-to-br from-white to-gray-50/50 border-2 border-gray-200/80 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300 mb-8 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-blue-500 via-purple-500 to-green-500"></div>
+                    <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent leading-tight flex items-start gap-4 pl-4">
                       {children}
                     </h2>
                   </div>
                 ),
-                h3: ({children}) => <h3 className="text-base sm:text-lg font-semibold text-gray-800 mt-6 mb-3 leading-tight">{children}</h3>,
-                p: ({children}) => <p className="mb-3 text-gray-700 text-base leading-relaxed">{children}</p>,
-                ul: ({children}) => <ul className="mb-4 ml-5 sm:ml-6 list-disc text-gray-700 space-y-1">{children}</ul>,
+                h3: ({children}) => (
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 mt-8 mb-4 leading-tight flex items-center gap-2 border-l-4 border-blue-500 pl-4 py-2 bg-gradient-to-r from-blue-50/50 to-transparent rounded-r-lg">
+                    {children}
+                  </h3>
+                ),
+                p: ({children}) => <p className="mb-4 text-gray-700 text-base sm:text-lg leading-relaxed tracking-wide">{children}</p>,
+                ul: ({children}) => <ul className="mb-6 ml-6 sm:ml-8 space-y-3 text-gray-700">{children}</ul>,
                 ol: ({children}) => <ol className="mb-4 ml-5 sm:ml-6 list-decimal text-gray-700 space-y-1">{children}</ol>,
-                li: ({children}) => <li className="mb-1.5 text-gray-700 text-base leading-relaxed">{children}</li>,
-                strong: ({children}) => <strong className="font-bold text-gray-900">{children}</strong>,
+                li: ({children}) => (
+                  <li className="text-gray-700 text-base sm:text-lg leading-relaxed pl-2 relative before:content-['→'] before:absolute before:-left-6 before:text-blue-500 before:font-bold">
+                    {children}
+                  </li>
+                ),
+                strong: ({children}) => (
+                  <strong className="font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-purple-700 px-1">
+                    {children}
+                  </strong>
+                ),
                 table: ({children}) => (
-                  <div className="overflow-x-auto my-4 -mx-2 sm:mx-0">
-                    <table className="min-w-full border-collapse border border-gray-300 bg-white rounded-lg shadow-sm text-sm sm:text-base">{children}</table>
+                  <div className="overflow-x-auto my-8 -mx-2 sm:mx-0 rounded-2xl shadow-lg border border-gray-200">
+                    <table className="min-w-full border-collapse bg-white text-sm sm:text-base">{children}</table>
                   </div>
                 ),
-                thead: ({children}) => <thead className="bg-gradient-to-r from-gray-100 to-gray-50">{children}</thead>,
-                tbody: ({children}) => <tbody className="divide-y divide-gray-200">{children}</tbody>,
-                tr: ({children}) => <tr className="hover:bg-gray-50 transition-colors">{children}</tr>,
-                th: ({children}) => <th className="px-3 sm:px-4 py-2.5 sm:py-3 text-left font-bold text-gray-900 bg-gray-100 border-b-2 border-gray-300 text-xs sm:text-sm uppercase tracking-wide">{children}</th>,
-                td: ({children}) => <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-gray-700 border-r border-gray-200 last:border-r-0 text-sm sm:text-base">{children}</td>,
+                thead: ({children}) => <thead className="bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700">{children}</thead>,
+                tbody: ({children}) => <tbody className="divide-y divide-gray-100">{children}</tbody>,
+                tr: ({children}) => <tr className="hover:bg-blue-50/50 transition-all duration-200">{children}</tr>,
+                th: ({children}) => <th className="px-4 sm:px-6 py-4 sm:py-5 text-left font-bold text-white text-sm sm:text-base uppercase tracking-wider">{children}</th>,
+                td: ({children}) => <td className="px-4 sm:px-6 py-4 sm:py-5 text-gray-800 border-r border-gray-100 last:border-r-0 text-sm sm:text-base font-medium">{children}</td>,
               }}
             >
               {cleanMarkdownTables(reportData.reportContent)}
@@ -149,67 +178,58 @@ export function ResultsStep({}: ResultsStepProps) {
         </div>
       )}
 
-      {/* Affordability Analysis */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-        <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-          <span className="mr-3 text-2xl">💰</span>
+      {/* Affordability Analysis - With Delight Animations */}
+      <div className="bg-gradient-to-br from-white via-gray-50/50 to-white border-2 border-gray-200/80 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300">
+        <h3 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3 animate-slide-in-left">
+          <span className="text-3xl bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-2xl shadow-lg animate-float">💰</span>
           {t('wizard.steps.results.affordabilityAnalysis')}
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="text-sm font-medium text-green-800 mb-1">
-              {t('wizard.steps.results.recommendedPriceRange')}
-            </div>
-            <div className="text-2xl font-bold text-green-900">
-              {formatCurrency(reportData.estimatedPrice)}
-            </div>
-            <div className="text-xs text-green-600 mt-1">
-              {t('wizard.steps.results.affordabilityDetails.basedOnIncome')}
-            </div>
-          </div>
+          <AnimatedMetricCard
+            value={formatCurrency(reportData.estimatedPrice)}
+            label={t('wizard.steps.results.recommendedPriceRange')}
+            description={t('wizard.steps.results.affordabilityDetails.basedOnIncome')}
+            color="green"
+            icon="🎯"
+            delay={100}
+          />
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="text-sm font-medium text-blue-800 mb-1">
-              {t('wizard.steps.results.affordabilityDetails.maximumAffordable')}
-            </div>
-            <div className="text-2xl font-bold text-blue-900">
-              {formatCurrency(reportData.maxAffordable)}
-            </div>
-            <div className="text-xs text-blue-600 mt-1">
-              {t('wizard.steps.results.affordabilityDetails.upperLimit')}
-            </div>
-          </div>
+          <AnimatedMetricCard
+            value={formatCurrency(reportData.maxAffordable)}
+            label={t('wizard.steps.results.affordabilityDetails.maximumAffordable')}
+            description={t('wizard.steps.results.affordabilityDetails.upperLimit')}
+            color="blue"
+            icon="🏠"
+            delay={300}
+          />
 
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="text-sm font-medium text-orange-800 mb-1">
-              {t('wizard.steps.results.affordabilityDetails.estimatedMonthlyPayment')}
-            </div>
-            <div className="text-2xl font-bold text-orange-900">
-              {formatCurrency(reportData.monthlyPayment)}
-            </div>
-            <div className="text-xs text-orange-600 mt-1">
-              {t('wizard.steps.results.affordabilityDetails.piti')}
-            </div>
-          </div>
+          <AnimatedMetricCard
+            value={formatCurrency(reportData.monthlyPayment)}
+            label={t('wizard.steps.results.affordabilityDetails.estimatedMonthlyPayment')}
+            description={t('wizard.steps.results.affordabilityDetails.piti')}
+            color="orange"
+            icon="📅"
+            delay={500}
+          />
         </div>
       </div>
 
       {/* Recommended Programs */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-        <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-          <span className="mr-3 text-2xl">🏆</span>
+      <div className="bg-gradient-to-br from-white via-purple-50/30 to-white border-2 border-purple-200/80 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300">
+        <h3 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3">
+          <span className="text-3xl bg-gradient-to-br from-purple-500 to-indigo-600 p-3 rounded-2xl shadow-lg">🏆</span>
           {t('wizard.steps.results.sections.loanPrograms')}
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {reportData.programFit.map((program, index) => (
-            <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-brand-100 text-brand-800 rounded-full flex items-center justify-center text-sm font-bold mr-3">
+            <div key={index} className="group bg-gradient-to-r from-purple-50 to-indigo-50/50 border-2 border-purple-200 rounded-xl p-5 shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-xl flex items-center justify-center text-lg font-bold shadow-md group-hover:scale-110 transition-transform">
                   {index + 1}
                 </div>
-                <div className="font-medium text-gray-900">{program}</div>
+                <div className="font-bold text-gray-900 text-base sm:text-lg">{program}</div>
               </div>
             </div>
           ))}
@@ -217,36 +237,36 @@ export function ResultsStep({}: ResultsStepProps) {
       </div>
 
       {/* Action Plan */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-        <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-          <span className="mr-3 text-2xl">📋</span>
+      <div className="bg-gradient-to-br from-white via-blue-50/30 to-white border-2 border-blue-200/80 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300">
+        <h3 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3">
+          <span className="text-3xl bg-gradient-to-br from-blue-500 to-cyan-600 p-3 rounded-2xl shadow-lg">📋</span>
           {t('wizard.steps.results.sections.actionPlan')}
         </h3>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {reportData.actionPlan.map((action, index) => (
-            <div key={index} className="flex items-start">
-              <div className="w-6 h-6 bg-brand-500 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3 mt-0.5 flex-shrink-0">
+            <div key={index} className="group flex items-start gap-4 p-4 bg-gradient-to-r from-blue-50/50 to-transparent rounded-xl hover:from-blue-100/50 hover:shadow-md transition-all duration-300">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-xl flex items-center justify-center text-base font-bold flex-shrink-0 shadow-md group-hover:scale-110 transition-transform">
                 {index + 1}
               </div>
-              <div className="text-gray-700">{action}</div>
+              <div className="text-gray-800 font-medium text-base sm:text-lg leading-relaxed">{action}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Expert Tips */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-        <h3 className="text-xl font-semibold text-yellow-800 mb-4 flex items-center">
-          <span className="mr-3 text-2xl">💡</span>
+      <div className="bg-gradient-to-br from-yellow-50 via-amber-50/50 to-yellow-50 border-2 border-yellow-300/80 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300">
+        <h3 className="text-2xl font-bold text-yellow-900 mb-8 flex items-center gap-3">
+          <span className="text-3xl bg-gradient-to-br from-yellow-500 to-amber-600 p-3 rounded-2xl shadow-lg">💡</span>
           {t('wizard.steps.results.sections.expertTips')}
         </h3>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {reportData.tips.map((tip, index) => (
-            <div key={index} className="flex items-start">
-              <div className="w-2 h-2 bg-yellow-400 rounded-full mr-3 mt-2 flex-shrink-0"></div>
-              <div className="text-yellow-800">{tip}</div>
+            <div key={index} className="group flex items-start gap-4 p-4 bg-white/60 rounded-xl hover:bg-white hover:shadow-md transition-all duration-300 border border-yellow-200">
+              <div className="w-3 h-3 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-full mt-2 flex-shrink-0 group-hover:scale-125 transition-transform shadow-sm"></div>
+              <div className="text-yellow-900 font-medium text-base sm:text-lg leading-relaxed">{tip}</div>
             </div>
           ))}
         </div>

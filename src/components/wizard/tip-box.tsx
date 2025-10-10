@@ -12,24 +12,24 @@ interface TipBoxProps {
 
 const variantStyles = {
   default: {
-    container: 'bg-blue-50 border border-blue-200',
-    icon: 'text-blue-500',
-    text: 'text-blue-800'
+    container: 'bg-info-50 border border-info-200',
+    icon: 'text-info-500',
+    text: 'text-info-800'
   },
   info: {
-    container: 'bg-blue-50 border border-blue-200',
-    icon: 'text-blue-500',
-    text: 'text-blue-800'
+    container: 'bg-info-50 border border-info-200',
+    icon: 'text-info-500',
+    text: 'text-info-800'
   },
   warning: {
-    container: 'bg-yellow-50 border border-yellow-200',
-    icon: 'text-yellow-500',
-    text: 'text-yellow-800'
+    container: 'bg-warning-50 border border-warning-200',
+    icon: 'text-warning-500',
+    text: 'text-warning-800'
   },
   success: {
-    container: 'bg-green-50 border border-green-200',
-    icon: 'text-green-500',
-    text: 'text-green-800'
+    container: 'bg-success-50 border border-success-200',
+    icon: 'text-success-500',
+    text: 'text-success-800'
   }
 }
 

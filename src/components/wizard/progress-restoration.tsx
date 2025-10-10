@@ -79,8 +79,8 @@ export function ProgressRestoration({
           >
             <div className="text-center space-y-6">
               {/* Icon */}
-              <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mx-auto w-12 h-12 bg-info-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-info-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
@@ -129,7 +129,7 @@ export function ProgressRestoration({
                 {/* Progress Bar */}
                 <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
                   <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-500 ease-out"
+                    className="bg-brand-500 h-2 rounded-full transition-all duration-500 ease-out"
                     style={{
                       width: `${Math.round((progressSummary.completedCount / progressSummary.totalSteps) * 100)}%`
                     }}

@@ -43,7 +43,17 @@ export function WizardNavigation({
       delay={400}
       duration="normal"
     >
-      <ButtonGroupLandmark className={`pt-8 sm:pt-6 landscape:pt-4 landscape:sm:pt-5 space-y-4 sm:space-y-0 sm:flex sm:justify-between sm:items-center landscape:space-y-3 ${className}`}>
+      <ButtonGroupLandmark className={`
+        pt-lg sm:pt-xl landscape:pt-md
+        space-y-sm sm:space-y-0
+        sm:flex sm:justify-between sm:items-center
+        fixed bottom-0 left-0 right-0
+        bg-white/95 backdrop-blur-sm border-t border-gray-200
+        p-md
+        z-sticky
+        md:sticky md:mt-xl
+        ${className}
+      `.trim().replace(/\s+/g, ' ')}>
         {/* Back Button */}
         {showBack && currentStep > 1 && (
           <FadeTransition
@@ -56,7 +66,7 @@ export function WizardNavigation({
               disabled={isTransitioning}
               variant="secondary"
               size="base"
-              className="w-full sm:w-auto flex items-center justify-center landscape:min-h-[44px]"
+              className="w-full sm:w-auto flex items-center justify-center min-h-touch"
               aria-label={t('wizard.navigation.ariaLabels.goBackToPrevious')}
             >
               <span className="mr-2" aria-hidden="true">←</span>
@@ -82,7 +92,7 @@ export function WizardNavigation({
             variant="primary"
             size="base"
             loading={isLoading || isTransitioning}
-            className="w-full sm:w-auto flex items-center justify-center landscape:min-h-[44px]"
+            className="w-full sm:w-auto flex items-center justify-center min-h-touch"
             aria-label={
               isLoading || isTransitioning
                 ? t('wizard.navigation.ariaLabels.processingWait')

@@ -364,7 +364,7 @@ export function EnhancedLocationStep({
           {/* Loading indicator */}
           {isZipLoading && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+              <Loader2 className="w-5 h-5 text-brand-500 animate-spin" />
             </div>
           )}
 
@@ -424,7 +424,7 @@ export function EnhancedLocationStep({
           {/* Loading indicator */}
           {isCityLoading && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <Loader2 className="w-4 h-4 text-brand-500 animate-spin" />
             </div>
           )}
 
@@ -486,10 +486,10 @@ export function EnhancedLocationStep({
 
       {/* Census Data Display */}
       {showCensusData && censusData && (
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mt-6 p-4 bg-info-50 border border-info-200 rounded-lg">
           <div className="flex items-center mb-3">
-            <Info className="w-5 h-5 text-blue-600 mr-2" />
-            <h3 className="text-lg font-semibold text-blue-900">
+            <Info className="w-5 h-5 text-info-600 mr-2" />
+            <h3 className="text-lg font-semibold text-info-900">
               Area Insights for {censusData.location?.city}
             </h3>
           </div>
@@ -498,7 +498,7 @@ export function EnhancedLocationStep({
             {/* Demographics */}
             {censusData.demographics && (
               <div className="flex items-center p-3 bg-white rounded-lg border">
-                <Users className="w-8 h-8 text-blue-600 mr-3" />
+                <Users className="w-8 h-8 text-info-600 mr-3" />
                 <div>
                   <div className="text-sm text-gray-600">Population</div>
                   <div className="text-lg font-semibold">
@@ -538,11 +538,11 @@ export function EnhancedLocationStep({
           {/* Recommendations */}
           {censusData.recommendations && censusData.recommendations.length > 0 && (
             <div className="mt-4">
-              <h4 className="text-sm font-semibold text-blue-900 mb-2">Area Highlights:</h4>
-              <ul className="text-sm text-blue-800 space-y-1">
+              <h4 className="text-sm font-semibold text-info-900 mb-2">Area Highlights:</h4>
+              <ul className="text-sm text-info-800 space-y-1">
                 {censusData.recommendations.slice(0, 3).map((rec, index) => (
                   <li key={index} className="flex items-start">
-                    <span className="text-blue-600 mr-2">•</span>
+                    <span className="text-info-600 mr-2">•</span>
                     {rec}
                   </li>
                 ))}

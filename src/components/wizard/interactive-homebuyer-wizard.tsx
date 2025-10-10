@@ -24,6 +24,8 @@ import { StepSkeleton } from '@/components/ui/loading-fallback'
 import { StepTransition, PageTransition, FadeTransition, ProgressTransition } from '@/components/ui/transition-animations'
 import { ProgressRestoration, ProgressSaveIndicator, useProgressAutoSave } from '@/components/wizard/progress-restoration'
 import { hasSavedProgress } from '@/lib/services/wizard-storage'
+import { ProgressMilestone } from '@/components/trust/trust-signals'
+import { ExitIntentModal } from '@/components/modals/exit-intent-modal'
 
 export function InteractiveHomebuyerWizard() {
   const { locale } = useLanguage()
@@ -166,9 +168,9 @@ function WizardLayout({ steps }: WizardLayoutProps) {
       <div className="min-h-screen flex flex-col bg-gradient-to-br from-white via-[#fff9f3] to-[#f8cfa2]">
         <WizardProgress steps={steps} />
 
-        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 landscape:py-4 landscape:sm:py-6 flex-1 w-full">
-          <div className="max-w-4xl xl:max-w-5xl 2xl:max-w-4xl mx-auto">
-            <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-white/50 p-6 sm:p-8 lg:p-10 xl:p-12 landscape:p-4 landscape:sm:p-6">
+        <div className="container mx-auto px-md sm:px-lg pt-[var(--header-height)] pb-md sm:pb-lg flex-1 w-full">
+          <div className="max-w-constrained mx-auto">
+            <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-white/50 p-md sm:p-lg lg:p-xl landscape:p-md">
               <StepSkeleton
                 locale={locale}
                 variant="form"
@@ -196,12 +198,13 @@ function WizardLayout({ steps }: WizardLayoutProps) {
 
       <WizardProgress steps={steps} />
 
-      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 landscape:py-4 landscape:sm:py-6 flex-1 w-full">
-        <div className="max-w-4xl xl:max-w-5xl 2xl:max-w-4xl mx-auto">
+      {/* Add padding to prevent content from hiding under fixed header */}
+      <div className="container mx-auto px-md sm:px-lg pt-[var(--header-height)] pb-md sm:pb-lg flex-1 w-full">
+        <div className="max-w-constrained mx-auto">
           <FormLandmark
             stepTitle={currentStepConfig.title[locale]}
             stepDescription={currentStepConfig.description[locale]}
-            className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-white/50 p-6 sm:p-8 lg:p-10 xl:p-12 landscape:p-4 landscape:sm:p-6"
+            className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-white/50 p-md sm:p-lg lg:p-xl landscape:p-md"
           >
             <div
               ref={containerRef}
@@ -213,7 +216,7 @@ function WizardLayout({ steps }: WizardLayoutProps) {
                 isVisible={!isTransitioning}
                 direction="forward"
               >
-                <header className="mb-8 sm:mb-6 lg:mb-10 xl:mb-12 landscape:mb-4 landscape:sm:mb-3 text-center space-y-4 sm:space-y-2 lg:space-y-6 landscape:space-y-2 landscape:sm:space-y-1">
+                <header className="mb-lg sm:mb-xl lg:mb-2xl landscape:mb-md text-center space-y-md sm:space-y-lg landscape:space-y-sm">
                   <FadeTransition
                     isVisible={!isTransitioning}
                     delay={100}
@@ -243,8 +246,11 @@ function WizardLayout({ steps }: WizardLayoutProps) {
                 </header>
               </StepTransition>
 
+              {/* Progress Milestone - Mid-funnel encouragement */}
+              <ProgressMilestone currentStep={currentStep} totalSteps={steps.length} className="mb-lg" />
+
               {/* Step Component */}
-              <div className="space-y-8 sm:space-y-6 lg:space-y-10 xl:space-y-12 landscape:space-y-4 landscape:sm:space-y-4 relative">
+              <div className="space-y-lg sm:space-y-xl lg:space-y-2xl landscape:space-y-md relative pb-24 md:pb-0">
                 {/* Transition Loading Overlay */}
                 {isTransitioning && (
                   <div
@@ -297,6 +303,37 @@ function WizardLayout({ steps }: WizardLayoutProps) {
         isVisible={showSaveIndicator}
         locale={locale}
       />
+
+      {/* Exit Intent Modal - Capture abandoning users */}
+      <ExitIntentModal
+        currentStep={currentStep}
+        onCapture={async (data) => {
+          // Save lead data with exit intent source
+          try {
+            const response = await fetch('/api/leads', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...data,
+                source: 'Exit Intent - Wizard',
+                wizardStep: currentStep,
+                timestamp: new Date().toISOString(),
+              }),
+            })
+
+            if (!response.ok) {
+              throw new Error('Failed to save contact information')
+            }
+          } catch (error) {
+            console.error('Exit intent capture error:', error)
+            throw error
+          }
+        }}
+        onClose={() => {
+          // Modal closed, user chose to continue
+          console.log('Exit intent modal closed')
+        }}
+      />
     </WizardLandmarks>
   )
 }
@@ -320,13 +357,13 @@ function WizardProgress({ steps }: WizardProgressProps) {
   return (
     <header
       id="wizard-progress"
-      className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40"
+      className="bg-white/95 backdrop-blur-md border-b border-gray-200 fixed top-0 left-0 right-0 z-navigation shadow-sm"
       role="banner"
       aria-label={t('wizard.progress.title')}
     >
-      <div className="container mx-auto px-4 py-4 landscape:py-2 landscape:sm:py-3">
-        <div className="flex items-center justify-between mb-4 landscape:mb-2 landscape:sm:mb-3">
-          <AccessibleText as="h1" variant="primary" size="xl" weight="bold" className="landscape:text-lg landscape:sm:text-xl">
+      <div className="container mx-auto px-md py-sm sm:py-md landscape:py-xs">
+        <div className="flex items-center justify-between mb-sm sm:mb-md landscape:mb-xs">
+          <AccessibleText as="h1" variant="primary" size="lg" weight="bold" className="sm:text-xl landscape:text-base landscape:sm:text-lg">
             <span aria-hidden="true">🏠</span>
             <span className="hidden sm:inline">{t('wizard.progress.title')}</span>
             <span className="sm:hidden">{t('wizard.progress.titleMobile')}</span>
@@ -335,7 +372,7 @@ function WizardProgress({ steps }: WizardProgressProps) {
             <span className="sr-only">
               {t('wizard.progress.progressLabel')}
             </span>
-            <AccessibleText variant="muted" size="sm" className="landscape:text-xs landscape:sm:text-sm">
+            <AccessibleText variant="muted" size="xs" className="sm:text-sm landscape:text-xs">
               {t('wizard.progress.stepCounter', { current: currentStep, total: steps.length })} • {t('wizard.progress.percentComplete', { percent: progressPercentage })}
             </AccessibleText>
           </div>
@@ -343,7 +380,7 @@ function WizardProgress({ steps }: WizardProgressProps) {
 
         {/* Progress Bar */}
         <div
-          className="w-full bg-gray-200 rounded-full h-2 mb-4 landscape:mb-2 landscape:sm:mb-3 landscape:h-1.5"
+          className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2 mb-sm sm:mb-md landscape:mb-xs landscape:h-1.5"
           role="progressbar"
           aria-valuenow={progressPercentage}
           aria-valuemin={0}
@@ -352,34 +389,57 @@ function WizardProgress({ steps }: WizardProgressProps) {
         >
           <ProgressTransition
             progress={progressPercentage}
-            className="h-2 landscape:h-1.5"
+            className="h-1.5 sm:h-2 landscape:h-1.5"
             animated={true}
           />
         </div>
 
-        {/* Enhanced Step Indicators */}
-        <AccessibleStepIndicator
-          steps={steps}
-          currentStep={currentStep}
-          completedSteps={completedSteps}
-          onStepClick={handleStepClick}
-        />
+        {/* Enhanced Step Indicators - Hidden on small mobile, visible on larger screens */}
+        <div className="hidden xs:block">
+          <AccessibleStepIndicator
+            steps={steps}
+            currentStep={currentStep}
+            completedSteps={completedSteps}
+            onStepClick={handleStepClick}
+          />
+        </div>
 
-        {/* Progress Summary */}
+        {/* Mobile-optimized minimal step indicator - Only on very small screens */}
+        <div className="block xs:hidden">
+          <div className="flex items-center justify-center gap-1">
+            {steps.map((step, index) => {
+              const isCompleted = completedSteps.has(step.id)
+              const isCurrent = step.id === currentStep
+              return (
+                <div
+                  key={step.id}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    isCurrent ? 'w-8 bg-brand-500' :
+                    isCompleted ? 'w-1.5 bg-green-500' :
+                    'w-1.5 bg-gray-300'
+                  }`}
+                  aria-hidden="true"
+                />
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Progress Summary - Desktop only */}
         <StepProgressSummary
           currentStep={currentStep}
           totalSteps={steps.length}
           completedSteps={completedSteps}
-          className="mt-2 hidden sm:block landscape:hidden"
+          className="mt-2 hidden lg:block"
         />
 
-        {/* Breadcrumb Navigation for mobile */}
+        {/* Breadcrumb Navigation - Tablet only */}
         <WizardBreadcrumb
           steps={steps}
           currentStep={currentStep}
           completedSteps={completedSteps}
           onStepClick={handleStepClick}
-          className="mt-2 block sm:hidden landscape:block landscape:sm:block landscape:text-xs"
+          className="mt-2 hidden sm:block lg:hidden landscape:hidden"
         />
 
       </div>

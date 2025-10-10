@@ -22,6 +22,22 @@ const envSchema = z.object({
   // AI/API Configuration
   GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required for AI functionality').optional(),
 
+  // Gemini Model Configuration (plug-and-play)
+  GEMINI_MODEL_FINANCIAL: z.string().default('gemini-2.5-pro'),
+  GEMINI_MODEL_LOAN_OPTIONS: z.string().default('gemini-2.5-flash'),
+  GEMINI_MODEL_LOCATION: z.string().default('gemini-2.5-flash'),
+
+  // Gemini Advanced Configuration
+  GEMINI_THINKING_BUDGET: z.coerce.number().default(0),
+  GEMINI_ENABLE_GROUNDING_FINANCIAL: z.string().transform(v => v === 'true').default('false'),
+  GEMINI_ENABLE_GROUNDING_LOANS: z.string().transform(v => v === 'true').default('false'),
+  GEMINI_ENABLE_GROUNDING_LOCATION: z.string().transform(v => v === 'true').default('true'),
+  GEMINI_MAX_OUTPUT_TOKENS_FINANCIAL: z.coerce.number().default(2000),
+  GEMINI_MAX_OUTPUT_TOKENS_LOANS: z.coerce.number().default(2500),
+  GEMINI_MAX_OUTPUT_TOKENS_LOCATION: z.coerce.number().default(3000),
+  GEMINI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.3),
+  GEMINI_ENABLE_PARALLEL_GENERATION: z.string().transform(v => v === 'true').default('true'),
+
   // Webhook Configuration
   ZAPIER_WEBHOOK_URL: z
     .string()
@@ -154,6 +170,30 @@ export const isAnalyticsEnabled = (): boolean => {
 export const isZapierEnabled = (): boolean => {
   return !!env.ZAPIER_WEBHOOK_URL;
 };
+
+/**
+ * Get Gemini AI model configuration
+ */
+export const getGeminiConfig = () => ({
+  models: {
+    financial: env.GEMINI_MODEL_FINANCIAL,
+    loanOptions: env.GEMINI_MODEL_LOAN_OPTIONS,
+    location: env.GEMINI_MODEL_LOCATION,
+  },
+  thinkingBudget: env.GEMINI_THINKING_BUDGET,
+  grounding: {
+    financial: env.GEMINI_ENABLE_GROUNDING_FINANCIAL,
+    loans: env.GEMINI_ENABLE_GROUNDING_LOANS,
+    location: env.GEMINI_ENABLE_GROUNDING_LOCATION,
+  },
+  maxOutputTokens: {
+    financial: env.GEMINI_MAX_OUTPUT_TOKENS_FINANCIAL,
+    loans: env.GEMINI_MAX_OUTPUT_TOKENS_LOANS,
+    location: env.GEMINI_MAX_OUTPUT_TOKENS_LOCATION,
+  },
+  temperature: env.GEMINI_TEMPERATURE,
+  enableParallelGeneration: env.GEMINI_ENABLE_PARALLEL_GENERATION,
+});
 
 /**
  * Get realtor contact information

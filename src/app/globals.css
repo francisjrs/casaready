@@ -4,48 +4,137 @@
 
 @layer base {
   :root {
+    /* Color tokens - CasaReady Brand (Orange #e7851e) */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 220 9% 20%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 9% 20%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 220 9% 20%;
+    --primary: 24 79% 51%;        /* Brand Orange #e7851e */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 91% 60%;      /* Blue #2563eb */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 13% 91%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 24 79% 51%;          /* Brand Orange for accents */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;      /* Red #dc2626 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 24 79% 51%;            /* Brand Orange */
     --radius: 0.5rem;
+
+    /*
+     * CasaReady Design System - Responsive Spacing Scale
+     * Mobile-first: 0.75× multiplier (compact for small screens)
+     */
+    --spacing-xs: 3px;     /* 4px × 0.75 = 3px - Tight elements */
+    --spacing-sm: 6px;     /* 8px × 0.75 = 6px - Buttons, tags */
+    --spacing-md: 12px;    /* 16px × 0.75 = 12px - Default padding */
+    --spacing-lg: 18px;    /* 24px × 0.75 = 18px - Section padding */
+    --spacing-xl: 24px;    /* 32px × 0.75 = 24px - Major sections */
+    --spacing-2xl: 36px;   /* 48px × 0.75 = 36px - Hero sections */
+    --spacing-3xl: 48px;   /* 64px × 0.75 = 48px - Page-level spacing */
+
+    /* Layout dimensions - Mobile */
+    --header-height: 140px;
+    --nav-height: 72px;
+    --trust-band-height: 40px;
+    --cta-sidebar-width: 0px; /* Hidden on mobile */
+    --max-width-content: 1280px;
+    --max-width-constrained: 896px;
+
+    /* Z-index scale */
+    --z-base: 0;
+    --z-dropdown: 10;
+    --z-sticky: 20;
+    --z-navigation: 30;
+    --z-modal: 40;
+    --z-tooltip: 50;
+
+    /* Touch targets */
+    --touch-minimum: 44px;
+    --touch-comfortable: 48px;
+    --touch-generous: 56px;
+
+    /* Scrollbar width calculation for fixed element alignment */
+    --scrollbar-width: 0px;
+  }
+
+  /* Tablet breakpoint: 1× multiplier (baseline spacing) */
+  @media (min-width: 640px) {
+    :root {
+      --spacing-xs: 4px;     /* Base 4px */
+      --spacing-sm: 8px;     /* Base 8px */
+      --spacing-md: 16px;    /* Base 16px */
+      --spacing-lg: 24px;    /* Base 24px */
+      --spacing-xl: 32px;    /* Base 32px */
+      --spacing-2xl: 48px;   /* Base 48px */
+      --spacing-3xl: 64px;   /* Base 64px */
+
+      --header-height: 160px;
+      --nav-height: 80px;
+    }
+  }
+
+  /* Desktop breakpoint: 1.25× multiplier (luxury, generous spacing) */
+  @media (min-width: 1024px) {
+    :root {
+      --spacing-xs: 5px;     /* 4px × 1.25 = 5px */
+      --spacing-sm: 10px;    /* 8px × 1.25 = 10px */
+      --spacing-md: 20px;    /* 16px × 1.25 = 20px */
+      --spacing-lg: 30px;    /* 24px × 1.25 = 30px */
+      --spacing-xl: 40px;    /* 32px × 1.25 = 40px */
+      --spacing-2xl: 60px;   /* 48px × 1.25 = 60px */
+      --spacing-3xl: 80px;   /* 64px × 1.25 = 80px */
+
+      --header-height: 140px;
+      --cta-sidebar-width: 320px; /* Desktop CTA sidebar appears */
+    }
+  }
+
+  /* Landscape mode on small screens: aggressive vertical compression */
+  @media (orientation: landscape) and (max-height: 768px) {
+    :root {
+      --header-height: 100px;
+      --nav-height: 60px;
+      --spacing-lg: 12px;    /* Reduce vertical spacing */
+      --spacing-xl: 16px;
+      --spacing-2xl: 24px;
+      --spacing-3xl: 32px;
+    }
+  }
+
+  /* Calculate scrollbar width for alignment */
+  @supports (scrollbar-gutter: stable) {
+    html {
+      scrollbar-gutter: stable;
+    }
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    /* Dark mode - CasaReady Brand (Orange) */
+    --background: 220 9% 7%;
+    --foreground: 0 0% 98%;
+    --card: 220 9% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 220 9% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 24 79% 51%;         /* Brand Orange (same) */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 91% 60%;      /* Blue (same) */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 9% 15%;
+    --muted-foreground: 220 9% 65%;
+    --accent: 24 79% 51%;          /* Brand Orange for accents */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 50%;      /* Red (slightly darker) */
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 9% 20%;
+    --input: 220 9% 20%;
+    --ring: 24 79% 51%;            /* Brand Orange */
   }
 }
 
@@ -131,14 +220,30 @@
     @apply text-base lg:text-lg;
   }
 
-  /* Link styles */
+  /* Link styles - Mobile-optimized */
   a {
     @apply transition-colors duration-200;
+    /* Minimum touch target for links */
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    touch-action: manipulation;
   }
 
   /* Button focus improvements */
   button:focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* All interactive elements should disable tap delay */
+  button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Ensure inputs meet minimum touch target */
+  input, select, textarea {
+    min-height: 44px;
   }
 
   /* Image optimization */
@@ -169,6 +274,23 @@
     body {
       /* Prevent rubber band scrolling on iOS */
       overscroll-behavior-x: none;
+      /* Improve font rendering on iOS */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Better input styling on iOS */
+    input, select, textarea {
+      -webkit-appearance: none;
+      border-radius: 0;
+    }
+  }
+
+  /* Safe area insets for notched devices (iPhone X+) */
+  @supports (padding: max(0px)) {
+    body {
+      padding-left: max(0px, env(safe-area-inset-left));
+      padding-right: max(0px, env(safe-area-inset-right));
     }
   }
 }
@@ -446,6 +568,127 @@
     }
   }
 
+  /* Delight & Engagement Animations */
+  @keyframes confetti {
+    0% {
+      transform: translateY(0) rotate(0deg);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(100px) rotate(720deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes bounce-slow {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  @keyframes glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+    }
+    50% {
+      box-shadow: 0 0 40px rgba(59, 130, 246, 0.8);
+    }
+  }
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .animate-confetti {
+    animation: confetti 1.5s ease-out forwards;
+  }
+
+  .animate-bounce-slow {
+    animation: bounce-slow 3s ease-in-out infinite;
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s linear infinite;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    background-size: 1000px 100%;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite;
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.6s ease-out forwards;
+  }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.6s ease-out forwards;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  /* Stagger animation delays for sequential reveals */
+  .stagger-1 { animation-delay: 0.1s; }
+  .stagger-2 { animation-delay: 0.2s; }
+  .stagger-3 { animation-delay: 0.3s; }
+  .stagger-4 { animation-delay: 0.4s; }
+  .stagger-5 { animation-delay: 0.5s; }
+  .stagger-6 { animation-delay: 0.6s; }
+
   /* Custom spacing */
   .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
     margin-top: 0.625rem;
@@ -453,5 +696,63 @@
 
   .space-x-2\.5 > :not([hidden]) ~ :not([hidden]) {
     margin-left: 0.625rem;
+  }
+
+  /* Mobile-first utility classes */
+  .mobile-touch-target {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+
+  .mobile-input {
+    min-height: 44px;
+    font-size: 16px; /* Prevents zoom on iOS */
+    touch-action: manipulation;
+  }
+
+  .mobile-padding {
+    padding: 1rem; /* 16px - mobile standard */
+  }
+
+  .mobile-gap {
+    gap: 0.5rem; /* 8px - base unit */
+  }
+
+  /* Prevent text selection on buttons and interactive elements */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* Safe area spacing for notched devices */
+  .safe-area-inset-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-area-inset-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+
+  /* ============================================================================
+   * Marquee Animation for Trust Band
+   * ============================================================================ */
+  @keyframes marquee {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  .animate-marquee {
+    animation: marquee 30s linear infinite;
+  }
+
+  .animate-marquee:hover {
+    animation-play-state: paused;
   }
 }

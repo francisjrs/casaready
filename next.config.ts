@@ -12,6 +12,16 @@ const nextConfig: NextConfig = {
   // Enable typed routes (stable in Next.js 15.5)
   typedRoutes: true,
 
+  // Allow cross-origin requests from local network devices during development
+  ...(!isProd && {
+    allowedDevOrigins: [
+      'http://192.168.0.32:3000',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      // Add other local network IP addresses as needed
+    ],
+  }),
+
   // Experimental features optimized for Vercel serverless
   experimental: {
     optimizeServerReact: true,

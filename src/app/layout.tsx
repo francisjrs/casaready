@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { cookies, headers } from 'next/headers'
 import { Inter } from 'next/font/google'
 import { Providers } from '@/components/providers'
@@ -46,6 +46,13 @@ const inter = Inter({
   variable: '--font-inter'
 })
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true
+}
+
 export const metadata: Metadata = {
   title: {
     default: 'CasaReady - Smart Home Management Platform',
@@ -60,12 +67,6 @@ export const metadata: Metadata = {
     'real estate',
     'property maintenance'
   ],
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 5,
-    userScalable: true
-  },
   authors: [{ name: 'CasaReady Team' }],
   creator: 'CasaReady',
   metadataBase: new URL('https://casaready.com'),

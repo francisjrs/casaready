@@ -573,6 +573,7 @@ export class GeminiPlanningClient {
 
   /**
    * Generate cache key from input data for response caching
+   * FIXED: Now includes buyer types, location priorities, and household size
    */
   private generateCacheKey(input: PlanGenerationInput, useGrounding: boolean): string {
     // Create a deterministic hash of key input parameters
@@ -585,11 +586,18 @@ export class GeminiPlanningClient {
       maxBudget: input.userProfile.location.maxBudget,
       language: input.preferences.language,
       useGrounding,
+      // CRITICAL FIX: Include buyer-specific data to prevent wrong cached recommendations
+      buyerTypes: (input.userProfile as any).buyerTypes || [],
+      locationPriorities: (input.userProfile as any).locationPriorities || [],
+      householdSize: (input.userProfile as any).householdSize || 0,
+      isVeteran: input.preferences.buyerSpecialization?.isMilitaryVeteran || false,
+      isFirstTime: input.preferences.buyerSpecialization?.isFirstTimeBuyer || false,
+      isInvestor: input.preferences.buyerSpecialization?.isInvestor || false,
       // Include buyer specialization flags for accurate caching
       specialization: JSON.stringify(input.preferences.buyerSpecialization || {}),
     };
 
-    return btoa(JSON.stringify(keyData)).slice(0, 32); // Base64 encode and truncate
+    return btoa(JSON.stringify(keyData)).slice(0, 64); // Increased from 32 to 64 chars for more unique keys
   }
 
   /**

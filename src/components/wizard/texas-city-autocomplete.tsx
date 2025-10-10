@@ -1,7 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { searchTexasCities, type TexasCity } from '@/lib/data/texas-cities'
+import {
+  searchTexasCitiesEnhanced,
+  searchTexasCitiesHybrid,
+  type TexasCity,
+  type TexasCitySearchResult
+} from '@/lib/data/texas-cities'
 import { useLanguage } from '@/contexts/language-context'
 
 interface TexasCityAutocompleteProps {
@@ -25,20 +30,39 @@ export function TexasCityAutocomplete({
 }: TexasCityAutocompleteProps) {
   const { t } = useLanguage()
   const [isOpen, setIsOpen] = useState(false)
-  const [suggestions, setSuggestions] = useState<TexasCity[]>([])
+  const [suggestions, setSuggestions] = useState<TexasCitySearchResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [isFocused, setIsFocused] = useState(false)
+  const [isSearchingCensus, setIsSearchingCensus] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Update suggestions when value changes
+  // Update suggestions when value changes - now with hybrid search
   useEffect(() => {
     if (value.length >= 2) {
-      const results = searchTexasCities(value, 8)
-      setSuggestions(results)
-      setIsOpen(results.length > 0)
+      // Step 1: Quick static search first
+      const staticResults = searchTexasCitiesEnhanced(value, 8)
+      setSuggestions(staticResults)
+      setIsOpen(true)
       setSelectedIndex(-1)
+
+      // Step 2: If few results, search Census API
+      if (staticResults.length < 3 && value.length >= 3) {
+        setIsSearchingCensus(true)
+        searchTexasCitiesHybrid(value, 8)
+          .then(hybridResults => {
+            setSuggestions(hybridResults)
+            setIsOpen(hybridResults.length > 0)
+          })
+          .catch(error => {
+            console.warn('Hybrid search failed:', error)
+            // Keep static results on error
+          })
+          .finally(() => {
+            setIsSearchingCensus(false)
+          })
+      }
     } else {
       setSuggestions([])
       setIsOpen(false)
@@ -87,8 +111,8 @@ export function TexasCityAutocomplete({
     }, 150)
   }
 
-  const selectCity = (city: TexasCity) => {
-    onChange(city.name, city)
+  const selectCity = (result: TexasCitySearchResult) => {
+    onChange(result.city.name, result.city)
     setIsOpen(false)
     setSelectedIndex(-1)
     inputRef.current?.blur()
@@ -138,10 +162,19 @@ export function TexasCityAutocomplete({
     return `${city.name}, ${city.county} County`
   }
 
+  const formatPopulation = (population: number): string => {
+    if (population >= 1000000) {
+      return `${(population / 1000000).toFixed(1)}M`
+    } else if (population >= 1000) {
+      return `${(population / 1000).toFixed(0)}K`
+    }
+    return population.toString()
+  }
+
   const getRegionBadgeColor = (region: string) => {
     switch (region) {
       case 'Greater Houston':
-        return 'bg-blue-100 text-blue-800'
+        return 'bg-info-100 text-info-800'
       case 'Dallas-Fort Worth':
         return 'bg-purple-100 text-purple-800'
       case 'Austin':
@@ -207,9 +240,9 @@ export function TexasCityAutocomplete({
           className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-80 overflow-y-auto"
           role="listbox"
         >
-          {suggestions.map((city, index) => (
+          {suggestions.map((result, index) => (
             <div
-              key={`${city.name}-${city.county}`}
+              key={`${result.city.name}-${result.city.county}-${index}`}
               className={`
                 px-4 py-3 cursor-pointer transition-colors duration-150
                 ${selectedIndex === index
@@ -218,32 +251,64 @@ export function TexasCityAutocomplete({
                 }
                 ${index !== suggestions.length - 1 ? 'border-b border-gray-100' : ''}
               `}
-              onClick={() => selectCity(city)}
+              onClick={() => selectCity(result)}
               role="option"
               aria-selected={selectedIndex === index}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-gray-900">
-                    {city.name}
+                    {result.city.name}
                   </span>
-                  {city.isMetro && (
+
+                  {/* Fuzzy Match Indicator */}
+                  {result.matchType === 'fuzzy' && (
+                    <span className="text-xs text-gray-500 italic">
+                      Did you mean?
+                    </span>
+                  )}
+
+                  {/* Metro Badge */}
+                  {result.city.isMetro && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                       {t('wizard.cityAutocomplete.metroBadge')}
+                    </span>
+                  )}
+
+                  {/* Census Data Badge */}
+                  {result.isCensusData && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-800">
+                      ✓ Verified
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-sm text-gray-600">
-                    {city.county} County
+                    {result.city.county} County
                   </span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getRegionBadgeColor(city.region)}`}>
-                    {city.region}
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getRegionBadgeColor(result.city.region)}`}>
+                    {result.city.region}
                   </span>
+                  {result.city.population > 0 && (
+                    <span className="text-xs text-gray-500">
+                      • Pop: {formatPopulation(result.city.population)}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
           ))}
+
+          {/* Census Search Loading Indicator */}
+          {isSearchingCensus && (
+            <div className="px-4 py-2 text-sm text-brand-600 bg-brand-50 border-t border-brand-100 flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Searching all Texas cities...
+            </div>
+          )}
         </div>
       )}
 
