@@ -6,11 +6,14 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useWizard, submitLead, formatPhoneNumber } from '@/lib/services'
 import { EnhancedErrorBox } from '@/components/ui/enhanced-error-display'
 import { useLanguage } from '@/contexts/language-context'
 import type { ReportData } from '@/lib/services/ai-service'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 
 interface ContactStepProps {
   onNext: () => void
@@ -38,6 +41,8 @@ export function ContactStep({ onNext }: ContactStepProps) {
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const [currentSection, setCurrentSection] = useState<string | null>(null)
   const [sectionProgress, setSectionProgress] = useState({ current: 0, total: 4 })
+  const [showPreview, setShowPreview] = useState(false)
+  const previewEndRef = useRef<HTMLDivElement>(null)
 
   // Update contact info when form data changes
   useEffect(() => {
@@ -48,6 +53,13 @@ export function ContactStep({ onNext }: ContactStepProps) {
       phone: formData.phone || undefined
     })
   }, [formData, updateContactInfo])
+
+  // Auto-scroll to bottom of preview when new content arrives
+  useEffect(() => {
+    if (showPreview && streamingContent && previewEndRef.current) {
+      previewEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [streamingContent, showPreview])
 
   const handleInputChange = (field: keyof typeof formData, value: string) => {
     setFormData(prev => ({
@@ -460,10 +472,128 @@ export function ContactStep({ onNext }: ContactStepProps) {
                 )}
 
                 {streamingContent && (
-                  <div className="mt-3">
-                    <p className="text-xs text-blue-600 mb-1">
-                      {streamingContent.length} characters generated
-                    </p>
+                  <div className="mt-4">
+                    {/* Preview Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="flex items-center justify-between w-full text-left text-xs font-semibold text-blue-700 hover:text-blue-800 transition-colors py-2 px-3 bg-blue-100 hover:bg-blue-200 rounded-lg"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>{showPreview ? '👁️' : '👁️‍🗨️'}</span>
+                        <span>
+                          {showPreview ? 'Hide Live Preview' : 'Show Live Preview'}
+                        </span>
+                        <span className="text-blue-600">
+                          ({streamingContent.length} characters)
+                        </span>
+                      </span>
+                      <svg
+                        className={`w-4 h-4 transition-transform duration-200 ${showPreview ? 'rotate-180' : ''}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Live Markdown Preview */}
+                    {showPreview && (
+                      <div className="mt-3 bg-white rounded-lg border-2 border-blue-300 shadow-lg overflow-hidden animate-in slide-in-from-top-2 duration-300">
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 flex items-center justify-between">
+                          <span className="text-white text-xs font-bold flex items-center gap-2">
+                            <span className="animate-pulse">●</span>
+                            <span>AI Writing...</span>
+                          </span>
+                          <span className="text-blue-200 text-xs">
+                            Section {sectionProgress.current}/{sectionProgress.total}
+                          </span>
+                        </div>
+                        <div className="max-h-96 overflow-y-auto p-4 bg-gradient-to-b from-white to-blue-50/30">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkBreaks]}
+                            components={{
+                              h2: ({children}) => (
+                                <h2 className="text-xl font-bold text-gray-900 mt-6 mb-3 pb-2 border-b-2 border-blue-300 first:mt-0">
+                                  {children}
+                                </h2>
+                              ),
+                              h3: ({children}) => (
+                                <h3 className="text-lg font-bold text-gray-800 mt-4 mb-2">
+                                  {children}
+                                </h3>
+                              ),
+                              p: ({children}) => (
+                                <p className="mb-3 text-gray-700 leading-relaxed">
+                                  {children}
+                                </p>
+                              ),
+                              ul: ({children}) => (
+                                <ul className="mb-4 ml-6 space-y-1 text-gray-700">
+                                  {children}
+                                </ul>
+                              ),
+                              ol: ({children}) => (
+                                <ol className="mb-4 ml-6 list-decimal text-gray-700 space-y-1">
+                                  {children}
+                                </ol>
+                              ),
+                              li: ({children}) => (
+                                <li className="text-gray-700 leading-relaxed">
+                                  {children}
+                                </li>
+                              ),
+                              strong: ({children}) => (
+                                <strong className="font-bold text-blue-900">
+                                  {children}
+                                </strong>
+                              ),
+                              table: ({children}) => (
+                                <div className="overflow-x-auto my-4 rounded-lg shadow-md border border-gray-200">
+                                  <table className="min-w-full border-collapse bg-white text-sm">
+                                    {children}
+                                  </table>
+                                </div>
+                              ),
+                              thead: ({children}) => (
+                                <thead className="bg-gradient-to-r from-blue-500 to-blue-600">
+                                  {children}
+                                </thead>
+                              ),
+                              tbody: ({children}) => (
+                                <tbody className="divide-y divide-gray-100">
+                                  {children}
+                                </tbody>
+                              ),
+                              tr: ({children}) => (
+                                <tr className="hover:bg-blue-50/50 transition-colors">
+                                  {children}
+                                </tr>
+                              ),
+                              th: ({children}) => (
+                                <th className="px-4 py-3 text-left font-bold text-white text-xs uppercase tracking-wide">
+                                  {children}
+                                </th>
+                              ),
+                              td: ({children}) => (
+                                <td className="px-4 py-3 text-gray-800 border-r border-gray-100 last:border-r-0 text-sm">
+                                  {children}
+                                </td>
+                              ),
+                            }}
+                          >
+                            {streamingContent}
+                          </ReactMarkdown>
+                          {/* Auto-scroll anchor */}
+                          <div ref={previewEndRef} className="h-1" />
+                        </div>
+                        <div className="bg-blue-50 border-t border-blue-200 px-4 py-2 text-xs text-blue-700 flex items-center justify-between">
+                          <span>Preview updates in real-time</span>
+                          <span className="font-mono">{streamingContent.length} chars</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
