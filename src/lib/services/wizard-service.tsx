@@ -75,7 +75,7 @@ const STEP_DATA_MAPPING: Record<number, (keyof WizardData)[]> = {
   3: ['budgetType', 'targetPrice', 'monthlyBudget'], // Budget
   4: ['annualIncome'], // Income
   5: ['monthlyDebts', 'creditScore'], // Debts & Credit
-  6: ['downPaymentAmount', 'downPaymentPercent'], // Down Payment
+  6: ['downPaymentAmount', 'downPaymentPercent', 'paymentType'], // Down Payment
   7: ['employmentType'], // Employment
   8: ['buyerType', 'householdSize'], // Buyer Profile
   9: [], // Contact Info (handled separately)
